@@ -274,6 +274,7 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.doubleClicked.connect(self.releaseKeyboard)
         self.subtitle.cellChanged.connect(self.subEdit)
         self.subtitle.verticalHeader().sectionClicked.connect(self.subHeaderClick)
+        self.subtitle.verticalHeader().setFixedWidth(70)
         self.subtitle.setContextMenuPolicy(Qt.CustomContextMenu)
         self.subtitle.customContextMenuRequested.connect(self.popTableMenu)
         self.initSubtitle()
@@ -447,8 +448,8 @@ class MainWindow(QMainWindow):  # Main window
             self.subtitle.cellChanged.connect(self.subEdit)
             for x in xSet:
                 for cnt, text in enumerate(self.clipBoard):
-                    print(text)
                     self.subtitle.setItem(yList[0] + cnt, x, QTableWidgetItem(text))
+                    self.subtitleDict[x][(yList[0] + cnt) * self.globalInterval] = [self.globalInterval, text]
             self.subtitle.cellChanged.disconnect(self.subEdit)
         elif action == setSpan:
             for x in xSet:
@@ -493,7 +494,7 @@ class MainWindow(QMainWindow):  # Main window
             for x in xSet:
                 start = yList[0] * self.globalInterval
                 end = yList[1] * self.globalInterval
-                self.exportSubWindow(start, end, x)
+                self.exportSubWindow(start, end, x + 1)
         self.subtitle.cellChanged.connect(self.subEdit)
 
     def setToolBar(self):
@@ -511,17 +512,15 @@ class MainWindow(QMainWindow):  # Main window
         exitAction = QAction(QIcon.fromTheme('application-exit'), '&退出', self, shortcut='Ctrl+Q', triggered=self.close)
         fileMenu.addAction(exitAction)
 
-        playMenu = self.menuBar().addMenu('&播放')
+        playMenu = self.menuBar().addMenu('&功能')
         self.playIcon = self.style().standardIcon(QStyle.SP_MediaPlay)
         self.pauseIcon = self.style().standardIcon(QStyle.SP_MediaPause)
         self.playAction = toolBar.addAction(self.playIcon, '播放')
         self.playAction.triggered.connect(self.mediaPlay)
-        playMenu.addAction(self.playAction)
         self.volumeIcon = self.style().standardIcon(QStyle.SP_MediaVolume)
         self.volumeMuteIcon = self.style().standardIcon(QStyle.SP_MediaVolumeMuted)
         self.volumeAction = toolBar.addAction(self.volumeIcon, '静音')
         self.volumeAction.triggered.connect(self.volumeMute)
-        playMenu.addAction(self.volumeAction)
         previewAction = QAction(QIcon.fromTheme('document-open'), '&设置预览字幕', self, triggered=self.popPreview)
         playMenu.addAction(previewAction)
 
@@ -541,7 +540,7 @@ class MainWindow(QMainWindow):  # Main window
 
         self.videoPositionEdit = LineEdit('00:00')
         self.videoPositionEdit.setAlignment(Qt.AlignRight)
-        self.videoPositionEdit.setFixedWidth(100)
+        self.videoPositionEdit.setFixedWidth(75)
         self.videoPositionEdit.setFont(QFont('Timers', 14))
         self.videoPositionEdit.clicked.connect(self.mediaPauseOnly)
         self.videoPositionEdit.editingFinished.connect(self.mediaPlayOnly)
@@ -689,7 +688,7 @@ class MainWindow(QMainWindow):  # Main window
         start = calSubTime2(exportArgs[0])
         end = calSubTime2(exportArgs[1])
         subStart = calSubTime2(exportArgs[2])
-        index = self.subEditComBox.currentIndex()
+        index = exportArgs[3] - 1
         subData = self.subtitleDict[index]
         rowList = sorted(subData.keys())
         exportRange = []
