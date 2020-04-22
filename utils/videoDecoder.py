@@ -262,7 +262,6 @@ class VideoDecoder(QDialog):
         self.videoPath = ''
         self.videoWidth = 1920
         self.videoHeight = 1080
-        self.previewSub = {x: {0: [1000, 'Hello! 我是第%s列字幕~' % (x + 1)]} for x in range(5)}
         self.subtitles = {x: {} for x in range(5)}
 
         super().__init__()
@@ -272,13 +271,15 @@ class VideoDecoder(QDialog):
         self.setLayout(self.layout)
 
         self.preview = QLabel('效果预览')
+        self.preview.setMaximumHeight(720)
+        self.preview.setMaximumWidth(1280)
         self.layout.addWidget(self.preview, 0, 0, 6, 10)
         self.preview.setScaledContents(True)
         self.preview.setAlignment(Qt.AlignCenter)
         self.preview.setStyleSheet("QLabel{background:white;}")
 
         self.option = QTabWidget()
-        self.option.setMaximumWidth(500)
+        self.option.setFixedWidth(415)
         self.layout.addWidget(self.option, 0, 10, 3, 1)
         self.subDict = {x: fontWidget() for x in range(5)}
         for subNumber, tabPage in self.subDict.items():
@@ -318,7 +319,7 @@ class VideoDecoder(QDialog):
         self.startLayout.addWidget(self.layerCheck, 1, 0, 1, 2)
         self.startLayout.addWidget(QLabel('编码器：'), 1, 3, 1, 1)
         self.decodeSelect = QComboBox()
-        self.decodeSelect.addItems(['CPU软编', 'CPU硬编', 'GPU N卡', 'GPU A卡'])
+        self.decodeSelect.addItems(['CPU', 'GPU N卡', 'GPU A卡'])
         self.decodeSelect.setCurrentIndex(0)
         self.startLayout.addWidget(self.decodeSelect, 1, 4, 1, 1)
         self.outputEdit = QLineEdit()
@@ -331,6 +332,7 @@ class VideoDecoder(QDialog):
         self.exportSubButton.setFixedHeight(50)
         self.startLayout.addWidget(self.exportSubButton, 3, 0, 1, 2)
         self.startButton = QPushButton('开始合成')
+        self.startButton.clicked.connect(self.exportVideo)
         self.startButton.setFixedHeight(50)
         self.startLayout.addWidget(self.startButton, 3, 3, 1, 2)
 
@@ -339,12 +341,17 @@ class VideoDecoder(QDialog):
         self.processBar.setFixedWidth(380)
         self.layout.addWidget(self.processBar, 5, 10, 1, 1)
 
+        self.totalFrames = 0
         self.old_decodeArgs = []
         self.videoPos = 0.001
         self.previewTimer = QTimer()
         self.previewTimer.setInterval(50)
         self.previewTimer.start()
         self.previewTimer.timeout.connect(self.generatePreview)
+
+        self.encodeTimer = QTimer()
+        self.encodeTimer.setInterval(100)
+        self.encodeTimer.timeout.connect(self.encodeProcess)
 
     def sub1CheckButtonClick(self):
         self.sub1CheckStatus = not self.sub1CheckStatus
@@ -430,22 +437,22 @@ class VideoDecoder(QDialog):
             fontUnderline = -1 if font.fontUnderline else 0
             fontStrikeout = -1 if font.fontStrikeout else 0
             self.subtitleArgs[subNumber] = [font.fontName, font.fontSize, self.ffmpegColor(font.fontColor), secondColor,
-                                          self.ffmpegColor(font.outlineColor), self.ffmpegColor(font.shadowColor),
-                                          fontBold, fontItalic, fontUnderline, fontStrikeout, 100, 100, 0, 0, 1,
-                                          font.outlineSizeBox.currentText(), font.shadowSizeBox.currentText(),
-                                          font.align.currentText().split(':')[0],
-                                          int(self.videoWidth * (font.LAlignSlider.value() / 100)),
-                                          int(self.videoWidth * (font.RAlignSlider.value() / 100)),
-                                          int(self.videoHeight * (font.VAlignSlider.value() / 100)), 1]
+                                            self.ffmpegColor(font.outlineColor), self.ffmpegColor(font.shadowColor),
+                                            fontBold, fontItalic, fontUnderline, fontStrikeout, 100, 100, 0, 0, 1,
+                                            font.outlineSizeBox.currentText(), font.shadowSizeBox.currentText(),
+                                            font.align.currentText().split(':')[0],
+                                            int(self.videoWidth * (font.LAlignSlider.value() / 100)),
+                                            int(self.videoWidth * (font.RAlignSlider.value() / 100)),
+                                            int(self.videoHeight * (font.VAlignSlider.value() / 100)), 1]
         self.decodeArgs.append(self.subtitleArgs)
-        self.decodeArgs.append([self.videoPath, self.videoPos, self.layerCheckStatus, self.decodeSelect.currentIndex()])
+        self.decodeArgs.append([self.videoPath, self.videoPos, self.layerCheckStatus])
 
     def exportSub(self):
         subtitlePath = QFileDialog.getSaveFileName(self, "选择字幕输出文件夹", None, "ASS字幕文件 (*.ass)")[0]
         if subtitlePath:
-            self.writeAss(subtitlePath, False)
+            self.writeAss(subtitlePath, False, True)
 
-    def writeAss(self, outputPath='temp_sub.ass', preview=True):
+    def writeAss(self, outputPath='temp_sub.ass', preview=True, tip=False):
         ass = codecs.open(outputPath, 'w', 'utf_8_sig')
         ass.write('[Script Info]\n')
         ass.write('Title: %s\n' % self.advanced.title.text())
@@ -480,6 +487,8 @@ class VideoDecoder(QDialog):
                 else:
                     line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % (subNumber, 'Subtitle_%s' % num, num, 'Hi! 我是第%s列字幕。' % num)
                 ass.write(line)
+            if tip:
+                QMessageBox.information(self, '导出字幕', '导出完成', QMessageBox.Yes)
         else:
             for subNumber in self.subtitleArgs:
                 for start, subData in self.subtitles[subNumber].items():
@@ -489,7 +498,6 @@ class VideoDecoder(QDialog):
                     else:
                         line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,%s\n' % (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
                     ass.write(line)
-            QMessageBox.information(self, '导出字幕', '导出完成', QMessageBox.Yes)
         ass.close()
 
     def generatePreview(self):
@@ -500,7 +508,7 @@ class VideoDecoder(QDialog):
         else:
             self.exportSubButton.setEnabled(True)
             self.startButton.setEnabled(True)
-        if not self.videoPath:
+        if not self.videoPath or not self.outputEdit.text():
             self.startButton.setEnabled(False)
         else:
             self.startButton.setEnabled(True)
@@ -509,14 +517,7 @@ class VideoDecoder(QDialog):
             if os.path.exists('temp_sub.jpg'):
                 os.remove('temp_sub.jpg')
             self.writeAss()
-            if self.decodeSelect.currentIndex() == 0:
-                cmd = ['ffmpeg.exe', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
-            elif self.decodeSelect.currentIndex() == 1:
-                cmd = ['ffmpeg.exe', '-c:v', 'h264_qsv', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
-            elif self.decodeSelect.currentIndex() == 2:
-                cmd = ['ffmpeg.exe', '-c:v', 'h264_nvenc', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
-            elif self.decodeSelect.currentIndex() == 3:
-                cmd = ['ffmpeg.exe', '-c:v', 'h264_amf', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
+            cmd = ['ffmpeg.exe', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
             if not self.videoPath:
                 self.preview.setText('请先在主界面选择视频')
                 self.preview.setStyleSheet("QLabel{background:white;color:#232629}")
@@ -530,3 +531,39 @@ class VideoDecoder(QDialog):
                 self.preview.setPixmap(pixmap)
         else:
             pass
+
+    def exportVideo(self):
+        self.previewTimer.stop()
+        self.collectArgs()
+        self.writeAss(preview=False)
+        if self.decodeSelect.currentIndex() == 0:
+            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-y', self.outputEdit.text()]
+        elif self.decodeSelect.currentIndex() == 1:
+            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-c:v', 'h264_nvenc', '-y', self.outputEdit.text()]
+        elif self.decodeSelect.currentIndex() == 2:
+            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-c:v', 'h264_amf', '-y', self.outputEdit.text()]
+        p = subprocess.Popen(['ffmpeg.exe', '-i', self.videoPath, '-map', '0:v:0', '-c', 'copy', '-f', 'null', '-'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        p.wait()
+        self.totalFrames = int(p.stdout.readlines()[-2].decode('gb18030').split('frame=')[-1].split(' ')[0])
+        self.p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.encodeTimer.start()
+
+    def encodeProcess(self):
+        try:
+            console = self.p.stdout.read(100).decode('gb18030')
+            self.p.stdout.flush()
+            if 'frame=' in console:
+                frame = int(console.split('frame=')[-1].split(' ')[0])
+                self.processBar.setValue(frame * 100 / self.totalFrames)
+        except:
+            pass
+        if self.p.poll() == 1:
+            self.encodeTimer.stop()
+            self.previewTimer.start()
+            self.processBar.setValue(0)
+            QMessageBox.information(self, '导出视频', '导出视频失败！请检查参数或编码器是否选择正确', QMessageBox.Yes)
+        elif self.p.poll() == 0:
+            self.encodeTimer.stop()
+            self.previewTimer.start()
+            self.processBar.setValue(100)
+            QMessageBox.information(self, '导出视频', '导出完成', QMessageBox.Yes)
