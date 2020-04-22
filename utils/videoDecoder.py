@@ -1,9 +1,25 @@
 import os, codecs, subprocess
 from PySide2.QtWidgets import QGridLayout, QFileDialog, QDialog, QPushButton,\
         QLineEdit, QTableWidget, QTableWidgetItem, QCheckBox, QProgressBar, QLabel,\
-        QComboBox, QCheckBox, QWidget, QSlider, QFontDialog, QColorDialog, QTabWidget
+        QComboBox, QCheckBox, QWidget, QSlider, QFontDialog, QColorDialog, QTabWidget, QMessageBox
 from PySide2.QtCore import Qt, QTimer, Signal, QThread
 from PySide2.QtGui import QFontInfo, QPixmap
+
+
+def ms2Time(ms):
+    '''
+    receive int
+    return str
+    ms -> h:m:s.ms
+    '''
+    h, m = divmod(ms, 3600000)
+    m, s = divmod(m, 60000)
+    s, ms = divmod(s, 1000)
+    h = ('0%s' % h)[-2:]
+    m = ('0%s' % m)[-2:]
+    s = ('0%s' % s)[-2:]
+    ms = ('%s0' % ms)[:2]
+    return '%s:%s:%s.%s' % (h, m, s, ms)
 
 
 class label(QLabel):
@@ -144,7 +160,7 @@ class fontWidget(QWidget):
         self.shadowColorLabel = QLabel('阴影颜色')
         self.optionLayout.addWidget(self.shadowColorLabel, 3, 4, 1, 1)
         self.align = QComboBox()
-        self.align.addItems(['1: 左下', '2: 中下', '3: 右下', '5: 左上', '6: 中上', '7: 右上', '9: 中左', '10: 中间', '11: 中右'])
+        self.align.addItems(['1: 左下', '2: 中下', '3: 右下', '4: 中左', '5: 中间', '6: 中右', '7: 左上', '8: 中上', '9: 右上'])
         self.align.setCurrentIndex(1)
         self.align.setFixedWidth(100)
         self.optionLayout.addWidget(self.align, 4, 0, 1, 1)
@@ -247,6 +263,7 @@ class VideoDecoder(QDialog):
         self.videoWidth = 1920
         self.videoHeight = 1080
         self.previewSub = {x: {0: [1000, 'Hello! 我是第%s列字幕~' % (x + 1)]} for x in range(5)}
+        self.subtitles = {x: {} for x in range(5)}
 
         super().__init__()
         self.setWindowTitle('字幕输出及合成')
@@ -261,29 +278,24 @@ class VideoDecoder(QDialog):
         self.preview.setStyleSheet("QLabel{background:white;}")
 
         self.option = QTabWidget()
-        self.option.setFixedWidth(415)
+        self.option.setMaximumWidth(500)
         self.layout.addWidget(self.option, 0, 10, 3, 1)
         self.subDict = {x: fontWidget() for x in range(5)}
         for subNumber, tabPage in self.subDict.items():
             self.option.addTab(tabPage, '字幕 %s' % (subNumber + 1))
         self.advanced = advanced(self.videoWidth, self.videoHeight)
-        self.option.addTab(self.advanced, 'Script Info')
+        self.option.addTab(self.advanced, 'ASS字幕信息')
 
         self.startGrid = QWidget()
         self.layout.addWidget(self.startGrid, 3, 10, 2, 1)
         self.startLayout = QGridLayout()
         self.startGrid.setLayout(self.startLayout)
         self.sub1Check = QPushButton('字幕 1')
-        self.sub1Check.setFixedWidth(75)
         self.sub1Check.setStyleSheet('background-color:#3daee9')
         self.sub2Check = QPushButton('字幕 2')
-        self.sub2Check.setFixedWidth(75)
         self.sub3Check = QPushButton('字幕 3')
-        self.sub3Check.setFixedWidth(75)
         self.sub4Check = QPushButton('字幕 4')
-        self.sub4Check.setFixedWidth(75)
         self.sub5Check = QPushButton('字幕 5')
-        self.sub5Check.setFixedWidth(75)
         self.sub1CheckStatus = True
         self.sub2CheckStatus = False
         self.sub3CheckStatus = False
@@ -306,18 +318,18 @@ class VideoDecoder(QDialog):
         self.startLayout.addWidget(self.layerCheck, 1, 0, 1, 2)
         self.startLayout.addWidget(QLabel('编码器：'), 1, 3, 1, 1)
         self.decodeSelect = QComboBox()
-        self.decodeSelect.addItems(['CPU', 'GPU'])
-        self.decodeSelect.setFixedWidth(75)
+        self.decodeSelect.addItems(['CPU软编', 'CPU硬编', 'GPU N卡', 'GPU A卡'])
         self.decodeSelect.setCurrentIndex(0)
         self.startLayout.addWidget(self.decodeSelect, 1, 4, 1, 1)
         self.outputEdit = QLineEdit()
         self.startLayout.addWidget(self.outputEdit, 2, 0, 1, 4)
         self.outputButton = QPushButton('保存路径')
         self.startLayout.addWidget(self.outputButton, 2, 4, 1, 1)
-        self.previewButton = QPushButton('生成预览')
-        self.previewButton.clicked.connect(self.generatePreview)
-        self.previewButton.setFixedHeight(50)
-        self.startLayout.addWidget(self.previewButton, 3, 0, 1, 2)
+        self.outputButton.clicked.connect(self.setSavePath)
+        self.exportSubButton = QPushButton('导出字幕')
+        self.exportSubButton.clicked.connect(self.exportSub)
+        self.exportSubButton.setFixedHeight(50)
+        self.startLayout.addWidget(self.exportSubButton, 3, 0, 1, 2)
         self.startButton = QPushButton('开始合成')
         self.startButton.setFixedHeight(50)
         self.startLayout.addWidget(self.startButton, 3, 3, 1, 2)
@@ -326,6 +338,13 @@ class VideoDecoder(QDialog):
         self.processBar.setStyleSheet("QProgressBar{border:1px;text-align:center;background:white}")
         self.processBar.setFixedWidth(380)
         self.layout.addWidget(self.processBar, 5, 10, 1, 1)
+
+        self.old_decodeArgs = []
+        self.videoPos = 0.001
+        self.previewTimer = QTimer()
+        self.previewTimer.setInterval(50)
+        self.previewTimer.start()
+        self.previewTimer.timeout.connect(self.generatePreview)
 
     def sub1CheckButtonClick(self):
         self.sub1CheckStatus = not self.sub1CheckStatus
@@ -347,7 +366,6 @@ class VideoDecoder(QDialog):
             self.sub3Check.setStyleSheet('background-color:#3daee9')
         else:
             self.sub3Check.setStyleSheet('background-color:#31363b')
-        print(self.sub3CheckStatus)
 
     def sub4CheckButtonClick(self):
         self.sub4CheckStatus = not self.sub4CheckStatus
@@ -355,7 +373,6 @@ class VideoDecoder(QDialog):
             self.sub4Check.setStyleSheet('background-color:#3daee9')
         else:
             self.sub4Check.setStyleSheet('background-color:#31363b')
-        print(self.sub4CheckStatus)
 
     def sub5CheckButtonClick(self):
         self.sub5CheckStatus = not self.sub5CheckStatus
@@ -371,7 +388,12 @@ class VideoDecoder(QDialog):
         else:
             self.layerCheck.setStyleSheet('background-color:#31363b')
 
-    def setVideoArgs(self, videoPath, videoWidth, videoHeight, subtiltes):
+    def setSavePath(self):
+        savePath = QFileDialog.getSaveFileName(self, "选择视频输出文件夹", None, "MP4格式 (*.mp4)")[0]
+        if savePath:
+            self.outputEdit.setText(savePath)
+
+    def setDefault(self, videoPath, videoWidth, videoHeight, subtiltes):
         self.videoPath = videoPath
         self.videoWidth = videoWidth
         self.videoHeight = videoHeight
@@ -389,11 +411,15 @@ class VideoDecoder(QDialog):
         return '&H00%s%s%s' % (b, g, r)
 
     def collectArgs(self):
+        self.decodeArgs = [[self.advanced.title.text(), self.advanced.originalScript.text(), self.advanced.translation.text(),
+                           self.advanced.editing.text(), self.advanced.timing.text(), self.advanced.scriptType.text(),
+                           self.advanced.collisions.currentText(), self.advanced.playResX.text(), self.advanced.playResY.text(),
+                           self.advanced.timer.text(), self.advanced.warpStyle.currentText().split(':')[0], self.advanced.scaleBS.currentText()]]
         self.selectedSubDict = {}
         for subNumber, subCheck in enumerate([self.sub1CheckStatus, self.sub2CheckStatus, self.sub3CheckStatus, self.sub4CheckStatus, self.sub5CheckStatus]):
             if subCheck:
                 self.selectedSubDict[subNumber] = self.subDict[subNumber]
-        self.decodeArgs = {}
+        self.subtitleArgs = {}
         for subNumber, font in self.selectedSubDict.items():
             if font.karaoke.isChecked():
                 secondColor = self.ffmpegColor(font.secondColor)
@@ -403,7 +429,7 @@ class VideoDecoder(QDialog):
             fontItalic = -1 if font.fontItalic else 0
             fontUnderline = -1 if font.fontUnderline else 0
             fontStrikeout = -1 if font.fontStrikeout else 0
-            self.decodeArgs[subNumber] = [font.fontName, font.fontSize, self.ffmpegColor(font.fontColor), secondColor,
+            self.subtitleArgs[subNumber] = [font.fontName, font.fontSize, self.ffmpegColor(font.fontColor), secondColor,
                                           self.ffmpegColor(font.outlineColor), self.ffmpegColor(font.shadowColor),
                                           fontBold, fontItalic, fontUnderline, fontStrikeout, 100, 100, 0, 0, 1,
                                           font.outlineSizeBox.currentText(), font.shadowSizeBox.currentText(),
@@ -411,9 +437,16 @@ class VideoDecoder(QDialog):
                                           int(self.videoWidth * (font.LAlignSlider.value() / 100)),
                                           int(self.videoWidth * (font.RAlignSlider.value() / 100)),
                                           int(self.videoHeight * (font.VAlignSlider.value() / 100)), 1]
-#         self.decodeArgs['decoder'] = self.decodeSelect.currentIndex()
+        self.decodeArgs.append(self.subtitleArgs)
+        self.decodeArgs.append([self.videoPath, self.videoPos, self.layerCheckStatus, self.decodeSelect.currentIndex()])
 
-        ass = codecs.open('temp_sub.ass', 'w', 'utf_8_sig')
+    def exportSub(self):
+        subtitlePath = QFileDialog.getSaveFileName(self, "选择字幕输出文件夹", None, "ASS字幕文件 (*.ass)")[0]
+        if subtitlePath:
+            self.writeAss(subtitlePath, False)
+
+    def writeAss(self, outputPath='temp_sub.ass', preview=True):
+        ass = codecs.open(outputPath, 'w', 'utf_8_sig')
         ass.write('[Script Info]\n')
         ass.write('Title: %s\n' % self.advanced.title.text())
         ass.write('OriginalScript: %s\n' % self.advanced.originalScript.text())
@@ -431,38 +464,69 @@ class VideoDecoder(QDialog):
         ass.write('[V4+ Styles]\n')
         ass.write('Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ')
         ass.write('ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n')
-        for subNumber, fontArgs in self.decodeArgs.items():
+        for subNumber, fontArgs in self.subtitleArgs.items():
             style = 'Style: Subtitle_%s' % (subNumber + 1)
             for i in fontArgs:
                 style += ',%s' % i
             ass.write('%s\n\n' % style)
+
+        ass.write('[Events]\n')
+        ass.write('Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n')
+        if preview:
+            for subNumber in self.subtitleArgs:
+                num = subNumber + 1
+                if self.layerCheckStatus:
+                    line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % ('Subtitle_%s' % num, num, r'Hi! 我是第%s列字幕。' % num)
+                else:
+                    line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % (subNumber, 'Subtitle_%s' % num, num, 'Hi! 我是第%s列字幕。' % num)
+                ass.write(line)
+        else:
+            for subNumber in self.subtitleArgs:
+                for start, subData in self.subtitles[subNumber].items():
+                    num = subNumber + 1
+                    if self.layerCheckStatus:
+                        line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,%s\n' % (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                    else:
+                        line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,%s\n' % (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                    ass.write(line)
+            QMessageBox.information(self, '导出字幕', '导出完成', QMessageBox.Yes)
         ass.close()
 
     def generatePreview(self):
-        if os.path.exists('temp_sub.jpg'):
-            os.remove('temp_sub.jpg')
         self.collectArgs()
-        ass = codecs.open('temp_sub.ass', 'a', 'utf_8_sig')
-        ass.write('[Events]\n')
-        ass.write('Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n')
-        if self.layerCheckStatus:
-            for subNumber in self.decodeArgs:
-                num = subNumber + 1
-                line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % ('Subtitle_%s' % num, num, 'Hi! 我是第%s列字幕。' % num)
-                ass.write(line)
+        if not self.selectedSubDict:
+            self.exportSubButton.setEnabled(False)
+            self.startButton.setEnabled(False)
         else:
-            for subNumber in self.decodeArgs:
-                num = subNumber + 1
-                line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % (subNumber, 'Subtitle_%s' % num, num, 'Hi! 我是第%s列字幕。' % num)
-                ass.write(line)
-        ass.close()
-        cmd = ['ffmpeg.exe', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-q:v', '2', '-f', 'image2', 'temp_sub.jpg']
+            self.exportSubButton.setEnabled(True)
+            self.startButton.setEnabled(True)
         if not self.videoPath:
-            self.preview.setText('请先在主界面选择加载视频')
-        elif not self.selectedSubDict:
-            self.preview.setText('请勾选要合成的字幕')
+            self.startButton.setEnabled(False)
         else:
-            p = subprocess.Popen(cmd)
-            p.wait()
-        pixmap = QPixmap('temp_sub.jpg')
-        self.preview.setPixmap(pixmap)
+            self.startButton.setEnabled(True)
+        if self.decodeArgs != self.old_decodeArgs:
+            self.old_decodeArgs = self.decodeArgs
+            if os.path.exists('temp_sub.jpg'):
+                os.remove('temp_sub.jpg')
+            self.writeAss()
+            if self.decodeSelect.currentIndex() == 0:
+                cmd = ['ffmpeg.exe', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
+            elif self.decodeSelect.currentIndex() == 1:
+                cmd = ['ffmpeg.exe', '-c:v', 'h264_qsv', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
+            elif self.decodeSelect.currentIndex() == 2:
+                cmd = ['ffmpeg.exe', '-c:v', 'h264_nvenc', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
+            elif self.decodeSelect.currentIndex() == 3:
+                cmd = ['ffmpeg.exe', '-c:v', 'h264_amf', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
+            if not self.videoPath:
+                self.preview.setText('请先在主界面选择视频')
+                self.preview.setStyleSheet("QLabel{background:white;color:#232629}")
+            elif not self.selectedSubDict:
+                self.preview.setText('请勾选要合成的字幕轨道')
+                self.preview.setStyleSheet("QLabel{background:white;color:#232629}")
+            else:
+                p = subprocess.Popen(cmd)
+                p.wait()
+                pixmap = QPixmap('temp_sub.jpg')
+                self.preview.setPixmap(pixmap)
+        else:
+            pass

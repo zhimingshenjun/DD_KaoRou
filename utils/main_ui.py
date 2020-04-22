@@ -85,7 +85,7 @@ def ms2Time(ms):
     h = ('0%s' % h)[-2:]
     m = ('0%s' % m)[-2:]
     s = ('0%s' % s)[-2:]
-    ms = ('%s00' % ms)[:3]
+    ms = ('%s0' % ms)[:2]
     return '%s:%s:%s,%s' % (h, m, s, ms)
 
 
@@ -122,7 +122,7 @@ class Label(QLabel):
 
 class PreviewSubtitle(QDialog):
     fontColor = '#ffffff'
-    fontSize = 90
+    fontSize = 60
     bold = True
     italic = False
     shadowOffset = 4
@@ -136,7 +136,7 @@ class PreviewSubtitle(QDialog):
         layout.addWidget(QLabel('字体大小'), 0, 0, 1, 1)
         self.fontSizeBox = QComboBox()
         self.fontSizeBox.addItems([str(x * 10 + 30) for x in range(15)])
-        self.fontSizeBox.setCurrentIndex(6)
+        self.fontSizeBox.setCurrentIndex(3)
         self.fontSizeBox.currentIndexChanged.connect(self.getFontSize)
         layout.addWidget(self.fontSizeBox, 0, 1, 1, 1)
         layout.addWidget(QLabel(''), 0, 2, 1, 1)
@@ -274,7 +274,6 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.doubleClicked.connect(self.releaseKeyboard)
         self.subtitle.cellChanged.connect(self.subEdit)
         self.subtitle.verticalHeader().sectionClicked.connect(self.subHeaderClick)
-        self.subtitle.verticalHeader().setFixedWidth(70)
         self.subtitle.setContextMenuPolicy(Qt.CustomContextMenu)
         self.subtitle.customContextMenuRequested.connect(self.popTableMenu)
         self.initSubtitle()
@@ -576,18 +575,22 @@ class MainWindow(QMainWindow):  # Main window
         toolBar.addWidget(QLabel('  '))
         moveForward = QPushButton('- 1')
         moveForward.setFixedWidth(50)
+        moveForward.setFixedHeight(38)
         toolBar.addWidget(moveForward)
         toolBar.addWidget(QLabel('  '))
         moveAfterward = QPushButton('+ 1')
         moveAfterward.setFixedWidth(50)
+        moveAfterward.setFixedHeight(38)
         toolBar.addWidget(moveAfterward)
         toolBar.addWidget(QLabel('  '))
         clearSub = QPushButton('清空')
         clearSub.setFixedWidth(50)
+        clearSub.setFixedHeight(38)
         toolBar.addWidget(clearSub)
         toolBar.addWidget(QLabel('  '))
         outputSub = QPushButton('裁剪')
         outputSub.setFixedWidth(50)
+        outputSub.setFixedHeight(38)
         toolBar.addWidget(outputSub)
         moveForward.clicked.connect(self.moveForward)
         moveAfterward.clicked.connect(self.moveAfterward)
@@ -755,7 +758,7 @@ class MainWindow(QMainWindow):  # Main window
 
     def decode(self):
         self.releaseKeyboard()
-        self.videoDecoder.setVideoArgs(self.videoPath, self.videoWidth, self.videoHeight, self.subtitleDict)
+        self.videoDecoder.setDefault(self.videoPath, self.videoWidth, self.videoHeight, self.subtitleDict)
         self.videoDecoder.hide()
         self.videoDecoder.show()
 

@@ -138,15 +138,23 @@ class YoutubeDnld(QDialog):
         self.layout.addWidget(self.dnldInput, 5, 0, 1, 2)
         self.dnldLabel = QLabel('输入要下载的视频序号，多个序号用空格隔开    ')
         self.layout.addWidget(self.dnldLabel, 5, 2, 1, 2)
-        self.jaCheck = QCheckBox('下载日语字幕(自动识别)')
-        self.jaCheck.setChecked(True)
+
+        self.jaCheck = QPushButton('下载日语字幕(自动识别)')
+        self.zhCheck = QPushButton('下载中文字幕(油管机翻)')
+        self.thumbnailCheck = QPushButton('下载封面')
+        self.jaCheck.setStyleSheet('background-color:#3daee9')
+        self.zhCheck.setStyleSheet('background-color:#3daee9')
+        self.thumbnailCheck.setStyleSheet('background-color:#3daee9')
+        self.jaCheckStatus = True
+        self.zhCheckStatus = True
+        self.thumbnailCheckStatus = True
+        self.jaCheck.clicked.connect(self.jaCheckClick)
+        self.zhCheck.clicked.connect(self.zhCheckClick)
+        self.thumbnailCheck.clicked.connect(self.thumbnailCheckClick)
         self.layout.addWidget(self.jaCheck, 5, 4, 1, 1)
-        self.zhCheck = QCheckBox('下载中文字幕(油管机翻)')
-        self.zhCheck.setChecked(True)
         self.layout.addWidget(self.zhCheck, 5, 5, 1, 1)
-        self.thumbnailCheck = QCheckBox('下载封面')
-        self.thumbnailCheck.setChecked(True)
         self.layout.addWidget(self.thumbnailCheck, 5, 6, 1, 1)
+
         self.savePath = QLineEdit()
         self.layout.addWidget(self.savePath, 6, 0, 1, 4)
         self.saveButton = QPushButton('保存路径')
@@ -159,14 +167,35 @@ class YoutubeDnld(QDialog):
         self.layout.addWidget(self.progress, 7, 0, 1, 7)
         self.startButton = QPushButton('开始下载')
         self.startButton.setFixedWidth(140)
-        self.startButton.setFixedHeight(54)
+        self.startButton.setFixedHeight(120)
         self.startButton.setEnabled(False)
         self.startButton.clicked.connect(self.dnldStart)
-        self.layout.addWidget(self.startButton, 6, 7, 2, 1)
+        self.layout.addWidget(self.startButton, 5, 7, 3, 1)
         self.timer = QTimer()
         self.timer.setInterval(500)
         self.timer.start()
         self.timer.timeout.connect(self.dnldProgress)
+
+    def jaCheckClick(self):
+        self.jaCheckStatus = not self.jaCheckStatus
+        if self.jaCheckStatus:
+            self.jaCheck.setStyleSheet('background-color:#3daee9')
+        else:
+            self.jaCheck.setStyleSheet('background-color:#31363b')
+
+    def zhCheckClick(self):
+        self.zhCheckStatus = not self.zhCheckStatus
+        if self.zhCheckStatus:
+            self.zhCheck.setStyleSheet('background-color:#3daee9')
+        else:
+            self.zhCheck.setStyleSheet('background-color:#31363b')
+
+    def thumbnailCheckClick(self):
+        self.thumbnailCheckStatus = not self.thumbnailCheckStatus
+        if self.thumbnailCheckStatus:
+            self.thumbnailCheck.setStyleSheet('background-color:#3daee9')
+        else:
+            self.thumbnailCheck.setStyleSheet('background-color:#31363b')
 
     def checkURL(self):
         self.url = self.urlInput.text()
