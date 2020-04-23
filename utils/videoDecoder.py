@@ -648,6 +648,7 @@ class VideoDecoder(QDialog):
         self.processBar.setValue(value)
 
     def setEncodePreview(self, currentPos):
+        self.writeAss(preview=False, pos=self.videoPos)
         cmd = ['ffmpeg.exe', '-y', '-ss', currentPos, '-i', self.videoPath, '-frames', '1', '-vf', 'ass=temp_sub.ass', '-q:v', '1', '-f', 'image2', 'temp_sub.jpg']
         p = subprocess.Popen(cmd)
         p.wait()
