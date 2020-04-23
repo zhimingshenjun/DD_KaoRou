@@ -754,7 +754,7 @@ class MainWindow(QMainWindow):  # Main window
 
     def decode(self):
         self.releaseKeyboard()
-        self.videoDecoder.setDefault(self.videoPath, self.videoWidth, self.videoHeight, self.subtitleDict)
+        self.videoDecoder.setDefault(self.videoPath, self.videoWidth, self.videoHeight, self.duration, self.subtitleDict)
         self.videoDecoder.hide()
         self.videoDecoder.show()
 
