@@ -1,9 +1,63 @@
-import os, codecs, subprocess
+import os, time, codecs, subprocess
 from PySide2.QtWidgets import QGridLayout, QFileDialog, QDialog, QPushButton,\
         QLineEdit, QTableWidget, QTableWidgetItem, QCheckBox, QProgressBar, QLabel,\
         QComboBox, QCheckBox, QWidget, QSlider, QFontDialog, QColorDialog, QTabWidget, QMessageBox
 from PySide2.QtCore import Qt, QTimer, Signal, QThread
 from PySide2.QtGui import QFontInfo, QPixmap
+
+
+class videoEncoder(QThread):
+    processBar = Signal(int)
+    currentPos = Signal(str)
+    encodeResult = Signal(bool)
+
+    def __init__(self, videoPath, cmd, parent=None):
+        super(videoEncoder, self).__init__(parent)
+        self.videoPath = videoPath
+        self.cmd = cmd
+
+    def run(self):
+        p = subprocess.Popen(['ffmpeg.exe', '-i', self.videoPath, '-map', '0:v:0', '-c', 'copy', '-f', 'null', '-'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        p.wait()
+        totalFrames = int(p.stdout.readlines()[-2].decode('gb18030').split('frame=')[-1].split(' ')[0])
+        p = subprocess.Popen(self.cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        cnt = 0
+        while p.poll() not in [0, 1]:
+            try:
+                console = p.stdout.readlines().decode('gb18030')
+                p.stdout.flush()
+                if 'frame=' in console:
+                    frameArgs = int(console.split('frame=')[-1].split(' '))
+                    for frame in frameArgs:
+                        if frame:
+                            frame = int(frame)
+                            self.processBar.emit(frame * 100 // totalFrames)
+                            break
+                cnt += 1
+                print(cnt)
+                print(console)
+                if not cnt % 5:
+                    if 'time=' in console:
+                        videoPos = console.split('time=')[-1].split(' ')[0]
+                        print(videoPos)
+                        self.currentPos.emit(videoPos)
+                time.sleep(2)
+            except:
+                pass
+        if p.poll() == 1:
+            self.encodeResult.emit(False)
+            # self.encodeTimer.stop()
+            # self.previewTimer.start()
+            # self.processBar.setValue(0)
+            # QMessageBox.information(self, '导出视频', '导出视频失败！请检查参数或编码器是否选择正确', QMessageBox.Yes)
+        elif p.poll() == 0:
+            self.encodeResult.emit(True)
+            # self.encodeTimer.stop()
+            # self.previewTimer.start()
+            # self.processBar.setValue(100)
+            # QMessageBox.information(self, '导出视频', '导出完成', QMessageBox.Yes)
+
+
 
 
 def ms2Time(ms):
@@ -343,15 +397,11 @@ class VideoDecoder(QDialog):
 
         self.totalFrames = 0
         self.old_decodeArgs = []
-        self.videoPos = 0.001
+        self.videoPos = 1
         self.previewTimer = QTimer()
         self.previewTimer.setInterval(50)
         self.previewTimer.start()
         self.previewTimer.timeout.connect(self.generatePreview)
-
-        self.encodeTimer = QTimer()
-        self.encodeTimer.setInterval(100)
-        self.encodeTimer.timeout.connect(self.encodeProcess)
 
     def sub1CheckButtonClick(self):
         self.sub1CheckStatus = not self.sub1CheckStatus
@@ -517,7 +567,7 @@ class VideoDecoder(QDialog):
             if os.path.exists('temp_sub.jpg'):
                 os.remove('temp_sub.jpg')
             self.writeAss()
-            cmd = ['ffmpeg.exe', '-t', '0.001', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
+            cmd = ['ffmpeg.exe', '-y', '-ss', str(self.videoPos), '-i', self.videoPath, '-frames', '1', '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
             if not self.videoPath:
                 self.preview.setText('请先在主界面选择视频')
                 self.preview.setStyleSheet("QLabel{background:white;color:#232629}")
@@ -533,37 +583,31 @@ class VideoDecoder(QDialog):
             pass
 
     def exportVideo(self):
+        outputPath = self.outputEdit.text()
+        if os.path.exists(outputPath):
+            os.remove(outputPath)
         self.previewTimer.stop()
         self.collectArgs()
         self.writeAss(preview=False)
         if self.decodeSelect.currentIndex() == 0:
-            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-y', self.outputEdit.text()]
+            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-y', outputPath]
         elif self.decodeSelect.currentIndex() == 1:
-            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-c:v', 'h264_nvenc', '-y', self.outputEdit.text()]
+            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-c:v', 'h264_nvenc', '-y', outputPath]
         elif self.decodeSelect.currentIndex() == 2:
-            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-c:v', 'h264_amf', '-y', self.outputEdit.text()]
-        p = subprocess.Popen(['ffmpeg.exe', '-i', self.videoPath, '-map', '0:v:0', '-c', 'copy', '-f', 'null', '-'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        p.wait()
-        self.totalFrames = int(p.stdout.readlines()[-2].decode('gb18030').split('frame=')[-1].split(' ')[0])
-        self.p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        self.encodeTimer.start()
+            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-c:v', 'h264_amf', '-y', outputPath]
 
-    def encodeProcess(self):
-        try:
-            console = self.p.stdout.read(100).decode('gb18030')
-            self.p.stdout.flush()
-            if 'frame=' in console:
-                frame = int(console.split('frame=')[-1].split(' ')[0])
-                self.processBar.setValue(frame * 100 / self.totalFrames)
-        except:
-            pass
-        if self.p.poll() == 1:
-            self.encodeTimer.stop()
-            self.previewTimer.start()
-            self.processBar.setValue(0)
-            QMessageBox.information(self, '导出视频', '导出视频失败！请检查参数或编码器是否选择正确', QMessageBox.Yes)
-        elif self.p.poll() == 0:
-            self.encodeTimer.stop()
-            self.previewTimer.start()
-            self.processBar.setValue(100)
-            QMessageBox.information(self, '导出视频', '导出完成', QMessageBox.Yes)
+        self.videoEncoder = videoEncoder(self.videoPath, cmd)
+        self.videoEncoder.processBar.connect(self.setProcessBar)
+        self.videoEncoder.currentPos.connect(self.setSliderPreview)
+        self.videoEncoder.start()
+
+
+    def setProcessBar(self, value):
+        self.processBar.setValue(value)
+
+    def setSliderPreview(self, currentPos):
+        cmd = ['ffmpeg.exe', '-y', '-ss', currentPos, '-i', self.videoPath, '-frames', '1', '-vf', 'ass=temp_sub.ass', '-f', 'image2', 'temp_sub.jpg']
+        p = subprocess.Popen(cmd)
+        p.wait()
+        pixmap = QPixmap('temp_sub.jpg')
+        self.preview.setPixmap(pixmap)
