@@ -3,7 +3,7 @@ from PySide2.QtWidgets import QGridLayout, QFileDialog, QDialog, QPushButton,\
         QLineEdit, QTableWidget, QTableWidgetItem, QCheckBox, QProgressBar, QLabel,\
         QComboBox, QCheckBox, QWidget, QSlider, QFontDialog, QColorDialog, QTabWidget, QMessageBox
 from PySide2.QtCore import Qt, QTimer, Signal, QThread, QPoint
-from PySide2.QtGui import QFontInfo, QPixmap
+from PySide2.QtGui import QFontInfo, QPixmap, QIntValidator
 
 
 class Slider(QSlider):
@@ -78,6 +78,76 @@ class label(QLabel):
 
     def mouseReleaseEvent(self, QMouseEvent):
         self.clicked.emit()
+
+
+class encodeOption(QWidget):
+    def __init__(self):
+        self.anime4KToken = False
+        super().__init__()
+        self.resize(800, 400)
+        self.setWindowTitle('编码设置')
+        layout = QGridLayout()
+        self.setLayout(layout)
+        resolution = QWidget()
+        resolutionLayout = QGridLayout()
+        resolution.setLayout(resolutionLayout)
+        layout.addWidget(resolution, 0, 0, 1, 1)
+        resolutionLayout.addWidget(QLabel('分辨率 '), 0, 0, 1, 1)
+        self.exportVideoWidth = QLineEdit()
+        self.exportVideoWidth.setAlignment(Qt.AlignCenter)
+        self.exportVideoWidth.setValidator(QIntValidator(100, 10000))
+        self.exportVideoHeight = QLineEdit()
+        self.exportVideoHeight.setAlignment(Qt.AlignCenter)
+        self.exportVideoHeight.setValidator(QIntValidator(100, 10000))
+        resolutionLayout.addWidget(self.exportVideoWidth, 0, 1, 1, 1)
+        resolutionLayout.addWidget(QLabel('X'), 0, 2, 1, 1)
+        resolutionLayout.addWidget(self.exportVideoHeight, 0, 3, 1, 1)
+
+        layout.addWidget(QLabel(), 0, 2, 1, 1)
+        layout.addWidget(QLabel('画质'), 0, 3, 1, 1)
+        self.exportVideoQuality = QComboBox()
+        self.exportVideoQuality.addItems(['无损', '原画', '极高', '较高', '中等', '较差', '极差', '最差', '渣渣'])
+        self.exportVideoQuality.setCurrentIndex(1)
+        layout.addWidget(self.exportVideoQuality, 0, 4, 1, 1)
+        layout.addWidget(QLabel(), 0, 5, 1, 1)
+        layout.addWidget(QLabel('格式'), 0, 6, 1, 1)
+        self.exportVideoFormat = QComboBox()
+        self.exportVideoFormat.addItems(['mp4', 'mkv'])
+        layout.addWidget(self.exportVideoFormat, 0, 7, 1, 1)
+
+        self.anime4k = QPushButton('使用Anime4K扩展画质')
+        self.anime4k.clicked.connect(self.anime4kClick)
+        layout.addWidget(self.anime4k, 1, 0, 1, 1)
+        layout.addWidget(QLabel('压缩比'), 1, 3, 1, 1)
+        self.exportVideoPreset = QComboBox()
+        self.exportVideoPreset.addItems(['极致(最慢)', '较高(较慢)', '中等(中速)', '较低(较快)', '最低(最快)'])
+        layout.addWidget(self.exportVideoPreset, 1, 4, 1, 1)
+        layout.addWidget(QLabel(), 1, 5, 1, 1)
+        layout.addWidget(QLabel('编码器'), 1, 6, 1, 1)
+        self.encoder = QComboBox()
+        self.encoder.addItems(['CPU', 'GPU N卡', 'GPU A卡'])
+        layout.addWidget(self.encoder, 1, 7, 1, 1)
+
+        self.mixAudioPath = QLineEdit()
+        layout.addWidget(self.mixAudioPath, 2, 0, 1, 1)
+        self.mixAudioButton = QPushButton('音频混流')
+        self.mixAudioButton.clicked.connect(self.openAudio)
+        layout.addWidget(self.mixAudioButton, 2, 1, 1, 1)
+        self.confirm = QPushButton('确定')
+        self.confirm.clicked.connect(self.hide)
+        layout.addWidget(self.confirm, 2, 6, 1, 2)
+
+    def anime4kClick(self):
+        self.anime4KToken = not self.anime4KToken
+        if self.anime4KToken:
+            self.anime4k.setStyleSheet('background-color:#3daee9')
+        else:
+            self.anime4k.setStyleSheet('background-color:#31363b')
+
+    def openAudio(self):
+        self.audioPath = QFileDialog.getOpenFileName(self, "请选择音频文件", None, "音频文件 (*.m4a *.mp3 *.wav);;所有文件(*.*)")[0]
+        if self.audioPath:
+            self.mixAudioPath.setText(self.audioPath)
 
 
 class advanced(QWidget):
@@ -314,6 +384,7 @@ class VideoDecoder(QDialog):
         self.videoWidth = 1920
         self.videoHeight = 1080
         self.subtitles = {x: {} for x in range(5)}
+        self.setEncode = encodeOption()
 
         super().__init__()
         self.setWindowTitle('字幕输出及合成')
@@ -337,7 +408,7 @@ class VideoDecoder(QDialog):
         self.layout.addWidget(self.previewSlider, 6, 0, 1, 10)
 
         self.option = QTabWidget()
-        self.option.setFixedWidth(415)
+        self.option.setMaximumWidth(450)
         self.layout.addWidget(self.option, 0, 10, 3, 1)
         self.subDict = {x: fontWidget() for x in range(5)}
         for subNumber, tabPage in self.subDict.items():
@@ -370,20 +441,18 @@ class VideoDecoder(QDialog):
         self.startLayout.addWidget(self.sub3Check, 0, 2, 1, 1)
         self.startLayout.addWidget(self.sub4Check, 0, 3, 1, 1)
         self.startLayout.addWidget(self.sub5Check, 0, 4, 1, 1)
-        self.layerCheck = QPushButton('使用同一个字幕图层')
+        self.layerCheck = QPushButton('禁止字幕重叠')
         self.layerCheck.setStyleSheet('background-color:#3daee9')
         self.layerCheckStatus = True
         self.layerCheck.clicked.connect(self.layerButtonClick)
         self.startLayout.addWidget(self.layerCheck, 1, 0, 1, 2)
-        self.startLayout.addWidget(QLabel('编码器：'), 1, 3, 1, 1)
-        self.decodeSelect = QComboBox()
-        self.decodeSelect.addItems(['CPU', 'GPU N卡', 'GPU A卡'])
-        self.decodeSelect.setCurrentIndex(0)
-        self.startLayout.addWidget(self.decodeSelect, 1, 4, 1, 1)
+        self.encodeSetup = QPushButton('编码设置')
+        self.encodeSetup.clicked.connect(self.setEncodeArgs)
+        self.startLayout.addWidget(self.encodeSetup, 1, 3, 1, 2)
         self.outputEdit = QLineEdit()
-        self.startLayout.addWidget(self.outputEdit, 2, 0, 1, 4)
+        self.startLayout.addWidget(self.outputEdit, 2, 0, 1, 3)
         self.outputButton = QPushButton('保存路径')
-        self.startLayout.addWidget(self.outputButton, 2, 4, 1, 1)
+        self.startLayout.addWidget(self.outputButton, 2, 3, 1, 2)
         self.outputButton.clicked.connect(self.setSavePath)
         self.exportSubButton = QPushButton('导出字幕')
         self.exportSubButton.clicked.connect(self.exportSub)
@@ -396,7 +465,7 @@ class VideoDecoder(QDialog):
 
         self.processBar = QProgressBar()
         self.processBar.setStyleSheet("QProgressBar{border:1px;text-align:center;background:white}")
-        self.processBar.setFixedWidth(415)
+        self.processBar.setMaximumWidth(450)
         self.layout.addWidget(self.processBar, 6, 10, 1, 1)
 
         self.totalFrames = 0
@@ -452,7 +521,7 @@ class VideoDecoder(QDialog):
             self.layerCheck.setStyleSheet('background-color:#31363b')
 
     def setSavePath(self):
-        savePath = QFileDialog.getSaveFileName(self, "选择视频输出文件夹", None, "MP4格式 (*.mp4)")[0]
+        savePath = QFileDialog.getSaveFileName(self, "选择视频输出文件夹", None, "MP4格式 (*.mp4);;MKV格式(*.mkv)")[0]
         if savePath:
             self.outputEdit.setText(savePath)
 
@@ -460,6 +529,8 @@ class VideoDecoder(QDialog):
         self.videoPath = videoPath
         self.videoWidth = videoWidth
         self.videoHeight = videoHeight
+        self.setEncode.exportVideoWidth.setText(str(videoWidth))
+        self.setEncode.exportVideoHeight.setText(str(videoHeight))
         self.duration = duration
         self.advanced.setPlayRes(videoWidth, videoHeight)
         self.subtitles = copy.deepcopy(subtitles)
@@ -586,10 +657,8 @@ class VideoDecoder(QDialog):
         self.collectArgs()
         if not self.selectedSubDict:
             self.exportSubButton.setEnabled(False)
-            self.startButton.setEnabled(False)
         else:
             self.exportSubButton.setEnabled(True)
-            self.startButton.setEnabled(True)
         if not self.videoPath or not self.outputEdit.text():
             self.startButton.setEnabled(False)
         else:
@@ -620,6 +689,10 @@ class VideoDecoder(QDialog):
         else:
             pass
 
+    def setEncodeArgs(self):
+        self.setEncode.hide()
+        self.setEncode.show()
+
     def exportVideo(self):
         self.startButton.setText('停止')
         self.startButton.setStyleSheet('background-color:#3daee9')
@@ -631,18 +704,36 @@ class VideoDecoder(QDialog):
         self.previewTimer.stop()
         self.collectArgs()
         self.writeAss(preview=False)
-        if self.decodeSelect.currentIndex() == 0:
-            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-y', outputPath]
-        elif self.decodeSelect.currentIndex() == 1:
-            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-c:v', 'h264_nvenc', '-y', outputPath]
-        elif self.decodeSelect.currentIndex() == 2:
-            cmd = ['ffmpeg.exe', '-i', self.videoPath, '-vf', 'ass=temp_sub.ass', '-c:v', 'h264_amf', '-y', outputPath]
+        videoWidth = self.setEncode.exportVideoWidth.text()
+        videoHeight = self.setEncode.exportVideoHeight.text()
+        crf = ['0', '6', '12', '18', '24', '30', '36', '42', '48'][self.setEncode.exportVideoQuality.currentIndex()]
+        preset = ['veryslow', 'slower', 'medium', 'faster', 'superfast'][self.setEncode.exportVideoPreset.currentIndex()]
+        format = self.setEncode.exportVideoFormat.text()
+        if outputPath[-3:] != format:
+            outputPath = outputPath[:-3] + format
+            self.outputEdit.setText(outputPath)
+        audio = ''
+        if self.setEncode.mixAudioPath.text():
+            audio = self.setEncode.mixAudioPath.text()
+        self.anime4k = self.setEncode.anime4KToken
+        encoder = self.setEncode.encoder.currentIndex()
 
-        self.videoEncoder = videoEncoder(self.videoPath, cmd)
-        self.videoEncoder.processBar.connect(self.setProcessBar)
-        self.videoEncoder.currentPos.connect(self.setEncodePreview)
-        self.videoEncoder.encodeResult.connect(self.encodeFinish)
-        self.videoEncoder.start()
+        cmd = ['ffmpeg.exe', '-y', '-i', self.videoPath]
+        if audio:
+            cmd += ['-i', audio, '-c:a', 'aac']
+        cmd += ['-s', '%sx%s' % (videoWidth, videoHeight), '-crf', crf, '-preset', preset, '-vf', 'ass=temp_sub.ass']
+        if encoder == 1:
+            cmd += ['-c:v', 'h264_nvenc']
+        elif encoder == 2:
+            cmd += ['-c:v', 'h264_amf']
+        cmd.append(outputPath)
+        print(cmd)
+
+        # self.videoEncoder = videoEncoder(self.videoPath, cmd)
+        # self.videoEncoder.processBar.connect(self.setProcessBar)
+        # self.videoEncoder.currentPos.connect(self.setEncodePreview)
+        # self.videoEncoder.encodeResult.connect(self.encodeFinish)
+        # self.videoEncoder.start()
 
     def setProcessBar(self, value):
         self.processBar.setValue(value)

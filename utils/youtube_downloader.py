@@ -116,9 +116,9 @@ class YoutubeDnld(QDialog):
         self.setLayout(self.layout)
         self.tipLabel = QLabel('Youtube链接：')
         self.layout.addWidget(self.tipLabel, 0, 0, 1, 2)
-        self.urlInput = QLineEdit()
-        self.layout.addWidget(self.urlInput, 0, 1, 1, 6)
-        self.searchButton = QPushButton('检查')
+        self.urlInput = QLineEdit('请输入Youtube视频链接')
+        self.layout.addWidget(self.urlInput, 0, 2, 1, 5)
+        self.searchButton = QPushButton('查询')
         self.searchButton.clicked.connect(self.checkURL)
         self.layout.addWidget(self.searchButton, 0, 7, 1, 1)
         self.searchToken = False
@@ -136,7 +136,7 @@ class YoutubeDnld(QDialog):
         self.layout.addWidget(self.videoInfo, 1, 0, 4, 8)
         self.dnldInput = QLineEdit()
         self.layout.addWidget(self.dnldInput, 5, 0, 1, 2)
-        self.dnldLabel = QLabel('输入要下载的视频序号，多个序号用空格隔开    ')
+        self.dnldLabel = QLabel('输入要下载的视频/音频序号，多个序号用空格隔开    ')
         self.layout.addWidget(self.dnldLabel, 5, 2, 1, 2)
 
         self.jaCheck = QPushButton('下载日语字幕(自动识别)')
@@ -214,7 +214,7 @@ class YoutubeDnld(QDialog):
         if cnt:
             self.searchButton.setText('搜索中' + '.' * cnt)
         else:
-            self.searchButton.setText('检查')
+            self.searchButton.setText('查询')
 
     def setCheckStatus(self, checkStatus):
         if not checkStatus:
