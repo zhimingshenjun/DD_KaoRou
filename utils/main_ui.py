@@ -293,7 +293,8 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.cellChanged.disconnect(self.subEdit)
         for x in range(self.subtitle.columnCount()):
             for y in range(self.subtitle.rowCount()):
-                self.subtitle.setSpan(y, x, 1, 1)
+                if self.subtitle.rowSpan(y, x) > 1:
+                    self.subtitle.setSpan(y, x, 1, 1)
         self.subtitle.setRowCount(self.duration // self.globalInterval + 1)
         for x in range(self.subtitle.columnCount()):
             for y in range(self.subtitle.rowCount()):
@@ -373,7 +374,8 @@ class MainWindow(QMainWindow):  # Main window
                 for row in range(startRow, endRow):
                     self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
                     self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
-                self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
+                if endRow - startRow > 1:
+                    self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
             self.refreshComboBox()
             self.subtitle.cellChanged.connect(self.subEdit)
             self.initProcess.hide()
@@ -473,7 +475,8 @@ class MainWindow(QMainWindow):  # Main window
                 else:
                     firstItem = self.subtitle.item(yList[0], x).text()
                 for y in range(yList[0], yList[1] + 1):
-                    self.subtitle.setSpan(y, x, 1, 1)
+                    if self.subtitle.rowSpan(y, x) > 1:
+                        self.subtitle.setSpan(y, x, 1, 1)
                     self.subtitle.setItem(y, x, QTableWidgetItem(firstItem))
                     self.subtitle.item(y, x).setBackground(QBrush(QColor('#35545d')))
                     if y * self.globalInterval in self.subtitleDict[x]:
@@ -488,7 +491,8 @@ class MainWindow(QMainWindow):  # Main window
                 else:
                     firstItem = self.subtitle.item(yList[0], x).text()
                 for cnt, y in enumerate(range(yList[0], yList[1] + 1)):
-                    self.subtitle.setSpan(y, x, 1, 1)
+                    if self.subtitle.rowSpan(y, x) > 1:
+                        self.subtitle.setSpan(y, x, 1, 1)
                     if not cnt:
                         self.subtitle.setItem(yList[0], x, QTableWidgetItem(firstItem))
                         if firstItem:
@@ -625,8 +629,12 @@ class MainWindow(QMainWindow):  # Main window
                     for row in range(startRow, endRow):
                         self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
                         if row >= 0:
-                            self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
-                    self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
+                            try:
+                                self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
+                            except:
+                                pass
+                    if endRow - startRow > 1:
+                        self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
         self.subtitle.cellChanged.connect(self.subEdit)
         self.initProcess.hide()
 
@@ -635,7 +643,8 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.cellChanged.disconnect(self.subEdit)
         index = self.subEditComBox.currentIndex()
         for y in range(self.subtitle.rowCount()):
-            self.subtitle.setSpan(y, index, 1, 1)
+            if self.subtitle.rowSpan(y, index) > 1:
+                self.subtitle.setSpan(y, index, 1, 1)
             self.subtitle.setItem(y, index, QTableWidgetItem(''))
             self.subtitle.item(y, index).setBackground(QBrush(QColor('#232629')))
         tmpDict = self.subtitleDict[index]
@@ -647,8 +656,12 @@ class MainWindow(QMainWindow):  # Main window
             endRow = startRow + rowData[0] // self.globalInterval
             for row in range(startRow, endRow):
                 self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
-                self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
-            self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
+                try:
+                    self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
+                except:
+                    pass
+            if endRow - startRow > 1:
+                self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
         self.subtitle.cellChanged.connect(self.subEdit)
         self.initProcess.hide()
 
@@ -657,7 +670,8 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.cellChanged.disconnect(self.subEdit)
         index = self.subEditComBox.currentIndex()
         for y in range(self.subtitle.rowCount()):
-            self.subtitle.setSpan(y, index, 1, 1)
+            if self.subtitle.rowSpan(y, index) > 1:
+                self.subtitle.setSpan(y, index, 1, 1)
             self.subtitle.setItem(y, index, QTableWidgetItem(''))
             self.subtitle.item(y, index).setBackground(QBrush(QColor('#232629')))
         tmpDict = self.subtitleDict[index]
@@ -669,8 +683,12 @@ class MainWindow(QMainWindow):  # Main window
             endRow = startRow + rowData[0] // self.globalInterval
             for row in range(startRow, endRow):
                 self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
-                self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
-            self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
+                try:
+                    self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
+                except:
+                    pass
+            if endRow - startRow > 1:
+                self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
         self.subtitle.cellChanged.connect(self.subEdit)
         self.initProcess.hide()
 
@@ -682,7 +700,8 @@ class MainWindow(QMainWindow):  # Main window
             self.subtitle.cellChanged.disconnect(self.subEdit)
             self.subtitleDict[index] = {0: [self.globalInterval, '']}
             for i in range(self.subtitle.rowCount()):
-                self.subtitle.setSpan(i, index, 1, 1)
+                if self.subtitle.rowSpan(i, index) > 1:
+                    self.subtitle.setSpan(i, index, 1, 1)
                 self.subtitle.setItem(i, index, QTableWidgetItem(''))
                 self.subtitle.item(i, index).setBackground(QBrush(QColor('#232629')))
                 self.subtitle.setHorizontalHeaderItem(index, QTableWidgetItem('%s' % (index + 1)))
@@ -737,13 +756,13 @@ class MainWindow(QMainWindow):  # Main window
                 l = l.decode('utf8')
                 if 'Duration' in l:
                     self.duration = calSubTime(l.split(' ')[3][:-1])
+                    self.bitrate = int(l.split(' ')[-2])
                 if 'Stream' in l and 'DAR' in l:
                     self.videoWidth, self.videoHeight = map(int, l.split(' [')[0].split(' ')[-1].split('x'))
                     args = l.split(',')
-                    for cnt, arg in enumerate(args):
-                        if 'kb' in arg:
-                            self.bitrate = int(arg.split('kb')[0])
-                            self.fps = int(args[cnt + 1].split('fps')[0])
+                    for arg in args:
+                        if 'fps' in arg:
+                            self.fps = int(arg.split('fps')[0])
                             break
                     break
             self.initProcess.show()
