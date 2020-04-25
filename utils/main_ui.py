@@ -147,12 +147,12 @@ class PreviewSubtitle(QDialog):
         self.fontColorSelect.setStyleSheet('background-color:%s;color:%s' % (self.fontColor, self.colorReverse(self.fontColor)))
         self.fontColorSelect.clicked.connect(self.getFontColor)
         layout.addWidget(self.fontColorSelect, 0, 4, 1, 1)
-        self.boldCheckBox = QCheckBox('粗体')
-        self.boldCheckBox.setChecked(True)
-        self.boldCheckBox.stateChanged.connect(self.boldChange)
+        self.boldCheckBox = QPushButton('粗体')
+        self.boldCheckBox.setStyleSheet('background-color:#3daee9')
+        self.boldCheckBox.clicked.connect(self.boldChange)
         layout.addWidget(self.boldCheckBox, 1, 0, 1, 1)
-        self.italicCheckBox = QCheckBox('斜体')
-        self.italicCheckBox.stateChanged.connect(self.italicChange)
+        self.italicCheckBox = QPushButton('斜体')
+        self.italicCheckBox.clicked.connect(self.italicChange)
         layout.addWidget(self.italicCheckBox, 1, 1, 1, 1)
         layout.addWidget(QLabel('阴影距离'), 1, 3, 1, 1)
         self.shadowBox = QComboBox()
@@ -178,10 +178,18 @@ class PreviewSubtitle(QDialog):
         return '#%s%s%s' % (hex(r)[2:], hex(g)[2:], hex(b)[2:])
 
     def boldChange(self):
-        self.bold = self.boldCheckBox.isChecked()
+        self.bold = not self.bold
+        if self.bold:
+            self.boldCheckBox.setStyleSheet('background-color:#3daee9')
+        else:
+            self.boldCheckBox.setStyleSheet('background-color:#31363b')
 
     def italicChange(self):
-        self.italic = self.italicCheckBox.isChecked()
+        self.italic = not self.italic
+        if self.italic:
+            self.italicCheckBox.setStyleSheet('background-color:#3daee9')
+        else:
+            self.italicCheckBox.setStyleSheet('background-color:#31363b')
 
     def getShadow(self, index):
         self.shadowOffset = index
@@ -197,6 +205,8 @@ class MainWindow(QMainWindow):  # Main window
         self.mainLayout.setSpacing(10)
         self.mainWidget.setLayout(self.mainLayout)
         self.duration = 60000
+        self.bitrate = 2000
+        self.fps = 60
 
         self.initProcess = InitProcess()
         self.previewSubtitle = PreviewSubtitle()
@@ -294,11 +304,14 @@ class MainWindow(QMainWindow):  # Main window
         self.initProcess.hide()
 
     def addSubtitle(self, index):
-        subtitlePath = QFileDialog.getOpenFileName(self, "请选择字幕", None, "字幕文件 (*.srt *.vtt)")[0]
+        subtitlePath = QFileDialog.getOpenFileName(self, "请选择字幕", None, "字幕文件 (*.srt *.vtt *.ass *.ssa)")[0]
         if subtitlePath:
             self.initProcess.show()
             self.subtitle.cellChanged.disconnect(self.subEdit)
-            self.subtitle.setHorizontalHeaderItem(index, QTableWidgetItem(str(index + 1)))
+            if subtitlePath.endswith('.ass') or subtitlePath.endswith('.ssa'):
+                p = subprocess.Popen(['utils/ffmpeg.exe', '-y', '-i', subtitlePath, 'temp_sub.srt'])
+                p.wait()
+                subtitlePath = 'temp_sub.srt'
             subData = {}
             with open(subtitlePath, 'r', encoding='utf-8') as f:
                 f = f.readlines()
@@ -337,7 +350,10 @@ class MainWindow(QMainWindow):  # Main window
                         end = calSubTime(l[17:29]) // self.globalInterval * self.globalInterval
                         delta = end - start
                         if delta > 10:
-                            subData[start] = [delta, f[cnt + 1][:-1]]
+                            if '<b>' in f[cnt + 1]:
+                                subData[start] = [delta, f[cnt + 1].split('<b>')[1].split('<')[0]]
+                            else:
+                                subData[start] = [delta, f[cnt + 1][:-1]]
             self.subtitleDict[index].update(subData)
             maxRow = 0
             for _, v in self.subtitleDict.items():
@@ -712,9 +728,9 @@ class MainWindow(QMainWindow):  # Main window
             self.subEditComBox.addItem('字幕 ' + str(i + 1))
 
     def open(self):
-        self.videoPath = QFileDialog.getOpenFileName(self, "请选择视频文件", None, "视频文件 (*.mp4 *.mkv);;所有文件(*.*)")[0]
+        self.videoPath = QFileDialog.getOpenFileName(self, "请选择视频文件", None, "MP4格式 (*.mp4);;所有文件(*.*)")[0]
         if self.videoPath:
-            cmd = ['ffmpeg.exe', '-i', self.videoPath]
+            cmd = ['utils/ffmpeg.exe', '-i', self.videoPath]
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             p.wait()
             for l in p.stdout.readlines():
@@ -723,6 +739,9 @@ class MainWindow(QMainWindow):  # Main window
                     self.duration = calSubTime(l.split(' ')[3][:-1])
                 if 'Stream' in l and 'DAR' in l:
                     self.videoWidth, self.videoHeight = map(int, l.split(' [')[0].split(' ')[-1].split('x'))
+                    args = l.split(',')
+                    self.bitrate = int(args[3].split('kb')[0])
+                    self.fps = int(args[4].split('fps')[0])
                     break
             self.initProcess.show()
             self.subtitle.cellChanged.disconnect(self.subEdit)
@@ -754,7 +773,7 @@ class MainWindow(QMainWindow):  # Main window
 
     def decode(self):
         self.releaseKeyboard()
-        self.videoDecoder.setDefault(self.videoPath, self.videoWidth, self.videoHeight, self.duration, self.subtitleDict)
+        self.videoDecoder.setDefault(self.videoPath, self.videoWidth, self.videoHeight, self.duration, self.bitrate, self.fps, self.subtitleDict)
         self.videoDecoder.hide()
         self.videoDecoder.show()
 

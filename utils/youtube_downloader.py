@@ -33,7 +33,7 @@ class dnldThread(QThread):
             outputPath = os.path.join(self.savePath, modifyName)
             if not os.path.exists(outputPath):
                 self.downloading.emit(outputPath)
-                cmd = ['youtube-dl.exe', '-f', num]
+                cmd = ['utils/youtube-dl.exe', '-f', num]
                 if not cnt:
                     cmd += self.args
                 cmd.append(self.url)
@@ -80,7 +80,7 @@ class dnldCheck(QThread):
 
     def run(self):
         cnt = 0
-        p = subprocess.Popen(['youtube-dl.exe', '-e', self.url], stdout=subprocess.PIPE)
+        p = subprocess.Popen(['utils/youtube-dl.exe', '-e', self.url], stdout=subprocess.PIPE)
         while not p.poll() in [0, 1]:
             cnt += 1
             self.searchCnt.emit(cnt % 3 + 1)
@@ -93,7 +93,7 @@ class dnldCheck(QThread):
             self.checkStatus.emit(True)
             title = p.stdout.read().decode('gb18030').strip().replace('/', '_')
             self.videoTitle.emit(title)
-            p = subprocess.Popen(['youtube-dl.exe', '-F', self.url], stdout=subprocess.PIPE)
+            p = subprocess.Popen(['utils/youtube-dl.exe', '-F', self.url], stdout=subprocess.PIPE)
             while not p.poll() in [0, 1]:
                 cnt += 1
                 self.searchCnt.emit(cnt % 3 + 1)
