@@ -145,7 +145,7 @@ class encodeOption(QWidget):
         layout.addWidget(QLabel(), 1, 5, 1, 1)
         layout.addWidget(QLabel('编码器'), 1, 6, 1, 1)
         self.encoder = QComboBox()
-        self.encoder.addItems(['CPU', 'GPU N卡', 'GPU A卡'])
+        self.encoder.addItems(['CPU', 'N卡 H264', 'N卡 HEVC', 'A卡 H264', 'A卡 HEVC'])
         self.encoder.currentIndexChanged.connect(self.encoderChange)
         layout.addWidget(self.encoder, 1, 7, 1, 1)
 
@@ -166,16 +166,16 @@ class encodeOption(QWidget):
             self.anime4k.setStyleSheet('background-color:#31363b')
 
     def openAudio(self):
-        self.audioPath = QFileDialog.getOpenFileName(self, "请选择音频文件", None, "音频文件 (*.m4a *.mp3 *.wav);;所有文件(*.*)")[0]
+        self.audioPath = QFileDialog.getOpenFileName(self, "请选择音频文件", None, "音频文件 (*.m4a *.mp3 *.wav *.wma);;所有文件(*.*)")[0]
         if self.audioPath:
             self.mixAudioPath.setText(self.audioPath)
 
     def encoderChange(self, index):
+        self.exportVideoPreset.clear()
         if not index:
-            self.exportVideoPreset.setEnabled(True)
+            self.exportVideoPreset.addItems(['极致(最慢)', '较高(较慢)', '中等(中速)', '较低(较快)', '最低(最快)'])
         else:
-            self.exportVideoPreset.setCurrentIndex(2)
-            self.exportVideoPreset.setEnabled(False)
+            self.exportVideoPreset.addItems(['较高(较慢)', '中等(中速)', '较低(较快)'])
 
 
 class advanced(QWidget):
@@ -707,7 +707,7 @@ class VideoDecoder(QDialog):
             videoWidth = self.setEncode.exportVideoWidth.text()
             videoHeight = self.setEncode.exportVideoHeight.text()
             bit = self.setEncode.exportVideoBitrate.text() + 'k'
-            preset = ['veryslow', 'slower', 'medium', 'faster', 'ultrafast'][self.setEncode.exportVideoPreset.currentIndex()]
+            preset = ['veryslow', 'slow', 'medium', 'fast', 'ultrafast'][self.setEncode.exportVideoPreset.currentIndex()]
             cmd = ['utils/ffmpeg.exe', '-y', '-ss', str(self.videoPos), '-i', self.videoPath, '-frames', '1', '-vf', 'ass=temp_sub.ass',
                    '-s', '%sx%s' % (videoWidth, videoHeight), '-b:v', bit, '-preset', preset, '-q:v', '1', '-f', 'image2', 'temp_sub.jpg']
             if not self.videoPath:
@@ -742,22 +742,30 @@ class VideoDecoder(QDialog):
 
         videoWidth = self.setEncode.exportVideoWidth.text()
         videoHeight = self.setEncode.exportVideoHeight.text()
-        preset = ['veryslow', 'slower', 'medium', 'faster', 'ultrafast'][self.setEncode.exportVideoPreset.currentIndex()]
         audio = ''
         if self.setEncode.mixAudioPath.text():
             audio = self.setEncode.mixAudioPath.text()
         self.anime4k = self.setEncode.anime4KToken
         encoder = self.setEncode.encoder.currentIndex()
+        if not encoder:
+            preset = ['veryslow', 'slow', 'medium', 'fast', 'ultrafast'][self.setEncode.exportVideoPreset.currentIndex()]
+        else:
+            preset = ['slow', 'medium', 'fast'][self.setEncode.exportVideoPreset.currentIndex()]
         bit = self.setEncode.exportVideoBitrate.text() + 'k'
         fps = self.setEncode.exportVideoFPS.text()
-        cmd = ['utils/ffmpeg.exe', '-y', '-i', self.videoPath, '-b:v', bit, '-r', fps]
+        cmd = ['utils/ffmpeg.exe', '-y', '-i', self.videoPath]
         if audio:
             cmd += ['-i', audio, '-c:a', 'aac']
         cmd += ['-s', '%sx%s' % (videoWidth, videoHeight), '-preset', preset, '-vf', 'ass=temp_sub.ass']
         if encoder == 1:
             cmd += ['-c:v', 'h264_nvenc']
         elif encoder == 2:
+            cmd += ['-c:v', 'hevc_nvenc']
+        elif encoder == 3:
             cmd += ['-c:v', 'h264_amf']
+        elif encoder == 4:
+            cmd += ['-c:v', 'hevc_amf']
+        cmd += ['-b:v', bit, '-r', fps]
         cmd.append(outputPath)
 
         self.videoEncoder = videoEncoder(self.videoPath, cmd)

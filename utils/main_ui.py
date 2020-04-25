@@ -26,7 +26,7 @@ def calSubTime(t):
     m = int(t[3:5])
     s = int(t[6:8])
     t = t.replace(',', '.')
-    ms = int(t.split('.')[-1])
+    ms = int(('%s00' % t.split('.')[-1])[:3])
     return h * 3600000 + m * 60000 + s * 1000 + ms
 
 
@@ -341,14 +341,16 @@ class MainWindow(QMainWindow):  # Main window
                             subData[start] = [self.globalInterval, subText]
                 elif '-->' in l and f[cnt + 2].strip() and '<c>' not in f[cnt + 2]:
                     subText = f[cnt + 2][:-1]
-                    start = calSubTime(l[:12]) // self.globalInterval * self.globalInterval
+                    start, end = l.strip().replace(' ', '').split('-->')
+                    start = calSubTime(start) // self.globalInterval * self.globalInterval
                     if start not in self.subtitleDict[index]:
-                        end = calSubTime(l[17:29]) // self.globalInterval * self.globalInterval
+                        end = calSubTime(end) // self.globalInterval * self.globalInterval
                         subData[start] = [end - start, subText]
                 if '-->' in l and f[cnt + 1].strip() and not YoutubeAutoSub:
-                    start = calSubTime(l[:12]) // self.globalInterval * self.globalInterval
+                    start, end = l.strip().replace(' ', '').split('-->')
+                    start = calSubTime(start) // self.globalInterval * self.globalInterval
                     if start not in self.subtitleDict[index]:
-                        end = calSubTime(l[17:29]) // self.globalInterval * self.globalInterval
+                        end = calSubTime(end) // self.globalInterval * self.globalInterval
                         delta = end - start
                         if delta > 10:
                             if '<b>' in f[cnt + 1]:
@@ -376,7 +378,6 @@ class MainWindow(QMainWindow):  # Main window
                     self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
                 if endRow - startRow > 1:
                     self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
-            self.refreshComboBox()
             self.subtitle.cellChanged.connect(self.subEdit)
             self.initProcess.hide()
 
@@ -424,9 +425,11 @@ class MainWindow(QMainWindow):  # Main window
 
     def subEdit(self, row, index):
         repeat = self.subtitle.rowSpan(row, index)
-        self.setSubtitleDict(row, index, repeat, self.subtitle.item(row, index).text())
+        firstText = self.subtitle.item(row, index).text()
+        self.setSubtitleDict(row, index, repeat, firstText)
         self.subtitle.cellChanged.disconnect(self.subEdit)
         for cnt in range(repeat):
+            self.subtitle.setItem(row + cnt, index, QTableWidgetItem(firstText))
             if self.subtitle.item(row + cnt, index).text():
                 self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
             else:
@@ -440,10 +443,11 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.cellChanged.disconnect(self.subEdit)
         pos = QPoint(pos.x() + 55, pos.y() + 30)
         menu = QMenu()
-        copy = menu.addAction('复制')
-        paste = menu.addAction('粘贴')
         setSpan = menu.addAction('合并')
         clrSpan = menu.addAction('拆分')
+        copy = menu.addAction('复制')
+        paste = menu.addAction('粘贴')
+        delete = menu.addAction('删除')
         addSub = menu.addAction('导入字幕')
         cutSub = menu.addAction('裁剪字幕')
         action = menu.exec_(self.subtitle.mapToGlobal(pos))
@@ -468,6 +472,16 @@ class MainWindow(QMainWindow):  # Main window
                     self.subtitle.setItem(yList[0] + cnt, x, QTableWidgetItem(text))
                     self.subtitleDict[x][(yList[0] + cnt) * self.globalInterval] = [self.globalInterval, text]
             self.subtitle.cellChanged.disconnect(self.subEdit)
+        elif action == delete:
+            self.subtitle.cellChanged.connect(self.subEdit)
+            for x in xSet:
+                for y in range(yList[0], yList[1] + 1):
+                    if self.subtitle.item(y, x):
+                        if self.subtitle.item(y, x).text():
+                            self.subtitle.setItem(y, x, QTableWidgetItem(''))
+                            self.subtitle.item(y, x).setBackground(QBrush(QColor('#232629')))
+                        if y * self.globalInterval in self.subtitleDict[x]:
+                            del self.subtitleDict[x][y * self.globalInterval]
         elif action == setSpan:
             for x in xSet:
                 if not self.subtitle.item(yList[0], x):
@@ -486,24 +500,15 @@ class MainWindow(QMainWindow):  # Main window
             self.setSubtitleDict(yList[0], x, yList[1] - yList[0] + 1, firstItem)
         elif action == clrSpan:
             for x in xSet:
-                if not self.subtitle.item(yList[0], x):
-                    firstItem = ''
-                else:
-                    firstItem = self.subtitle.item(yList[0], x).text()
                 for cnt, y in enumerate(range(yList[0], yList[1] + 1)):
-                    if self.subtitle.rowSpan(y, x) > 1:
+                    repeat = self.subtitle.rowSpan(y, x)
+                    if repeat > 1:
                         self.subtitle.setSpan(y, x, 1, 1)
-                    if not cnt:
-                        self.subtitle.setItem(yList[0], x, QTableWidgetItem(firstItem))
-                        if firstItem:
-                            self.subtitle.item(y, x).setBackground(QBrush(QColor('#35545d')))
-                        else:
-                            self.subtitle.item(y, x).setBackground(QBrush(QColor('#232629')))
-                    else:
-                        self.subtitle.setItem(y, x, QTableWidgetItem(''))
-                        self.subtitle.item(y, x).setBackground(QBrush(QColor('#232629')))
-                    self.setSubtitleDict(yList[0], x, yList[1] - yList[0] + 1, firstItem)
-                break
+                        for repeatY in range(repeat):
+                            newY = y + repeatY
+                            if self.subtitle.item(newY, x):
+                                if self.subtitle.item(newY, x).text():
+                                    self.subtitleDict[x][newY * self.globalInterval] = [self.globalInterval, self.subtitle.item(newY, x).text()]
         elif action == addSub:
             self.subtitle.cellChanged.connect(self.subEdit)
             for x in xSet:
@@ -590,7 +595,8 @@ class MainWindow(QMainWindow):  # Main window
         toolBar.addWidget(self.globalIntervalComBox)
         toolBar.addWidget(QLabel('  '))
         self.subEditComBox = QComboBox()
-        self.refreshComboBox()
+        for i in range(self.subtitle.columnCount()):
+            self.subEditComBox.addItem('字幕 ' + str(i + 1))
         toolBar.addWidget(self.subEditComBox)
         toolBar.addWidget(QLabel('  '))
         moveForward = QPushButton('- 1')
@@ -740,11 +746,6 @@ class MainWindow(QMainWindow):  # Main window
                     subNumber += 1
         QMessageBox.information(self, '导出字幕', '导出完成', QMessageBox.Yes)
         self.exportWindow.hide()
-
-    def refreshComboBox(self):
-        self.subEditComBox.clear()
-        for i in range(self.subtitle.columnCount()):
-            self.subEditComBox.addItem('字幕 ' + str(i + 1))
 
     def open(self):
         self.videoPath = QFileDialog.getOpenFileName(self, "请选择视频文件", None, "MP4格式 (*.mp4);;所有文件(*.*)")[0]
