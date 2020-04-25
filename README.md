@@ -26,6 +26,6 @@
 ![image](https://github.com/jiafangjun/DD_KaoRou/blob/master/images/合成视频.jpg)
 
 在此特别感谢本项目所使用到的以下开源项目：
-https://github.com/ytdl-org/youtube-dl
-https://wiki.qt.io/Qt_for_Python
-https://github.com/FFmpeg/FFmpeg
+* https://github.com/ytdl-org/youtube-dl
+* https://wiki.qt.io/Qt_for_Python
+* https://github.com/FFmpeg/FFmpeg
