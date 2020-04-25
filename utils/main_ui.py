@@ -740,8 +740,11 @@ class MainWindow(QMainWindow):  # Main window
                 if 'Stream' in l and 'DAR' in l:
                     self.videoWidth, self.videoHeight = map(int, l.split(' [')[0].split(' ')[-1].split('x'))
                     args = l.split(',')
-                    self.bitrate = int(args[3].split('kb')[0])
-                    self.fps = int(args[4].split('fps')[0])
+                    for cnt, arg in enumerate(args):
+                        if 'kb' in arg:
+                            self.bitrate = int(arg.split('kb')[0])
+                            self.fps = int(args[cnt + 1].split('fps')[0])
+                            break
                     break
             self.initProcess.show()
             self.subtitle.cellChanged.disconnect(self.subEdit)
