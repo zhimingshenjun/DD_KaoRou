@@ -6,7 +6,7 @@ import time
 import shutil
 import subprocess
 from PySide2.QtWidgets import QGridLayout, QFileDialog, QDialog, QPushButton,\
-        QLineEdit, QTableWidget, QTableWidgetItem, QCheckBox, QProgressBar, QLabel
+        QLineEdit, QTableWidget, QTableWidgetItem, QProgressBar, QLabel
 from PySide2.QtCore import QTimer, Signal, QThread
 
 

@@ -243,7 +243,7 @@ class fontWidget(QWidget):
         fontUnderline = '下划线' if self.fontUnderline else ''
         fontStrikeOut = '删除线' if self.fontStrikeout else ''
         self.fontColor = '#ffffff'
-        self.secondColor = '#000000'
+        self.secondColor = '#ff5cf7'
         self.outlineColor = '#000000'
         self.shadowColor = '#696969'
 
@@ -320,6 +320,7 @@ class fontWidget(QWidget):
         self.VAlignSlider.setTickPosition(QSlider.TicksAbove)
         self.VAlignSlider.setSingleStep(10)
         self.VAlignSlider.setTickInterval(20)
+        self.VAlignSlider.setValue(10)
         self.optionLayout.addWidget(self.VAlignSlider, 4, 3, 1, 1)
         self.VAlignSlider.setOrientation(Qt.Horizontal)
         self.VAlignLabel = QLabel('垂直边距')
@@ -330,6 +331,7 @@ class fontWidget(QWidget):
         self.LAlignSlider.setTickPosition(QSlider.TicksAbove)
         self.LAlignSlider.setSingleStep(10)
         self.LAlignSlider.setTickInterval(20)
+        self.LAlignSlider.setValue(10)
         self.optionLayout.addWidget(self.LAlignSlider, 5, 0, 1, 1)
         self.LAlignSlider.setOrientation(Qt.Horizontal)
         self.LAlignLabel = QLabel('左边距')
@@ -382,7 +384,7 @@ class fontWidget(QWidget):
         color = QColorDialog.getColor()
         if color.isValid():
             self.secondColor = color.name()
-            self.secondColorSelect.setText(self.fontColor)
+            self.secondColorSelect.setText(self.secondColor)
             self.secondColorSelect.setStyleSheet('background-color:%s;color:%s' % (self.secondColor, self.colorReverse(self.secondColor)))
 
     def getOutlineColor(self):
@@ -594,16 +596,18 @@ class VideoDecoder(QDialog):
             if subCheck:
                 self.selectedSubDict[subNumber] = self.subDict[subNumber]
         self.subtitleArgs = {}
+        self.karaokDict = {}
         for subNumber, font in self.selectedSubDict.items():
-            if font.karaoke.isChecked():
-                secondColor = self.ffmpegColor(font.secondColor)
+            if font.karaokeStatus:
+                self.karaokDict[subNumber] = [True, self.ffmpegColor(font.secondColor), int(self.videoWidth * (font.LAlignSlider.value() / 100)),
+                                              int(self.videoHeight * (font.VAlignSlider.value() / 100))]
             else:
-                secondColor = '&H00000000'
+                self.karaokDict[subNumber] = [False, '&H00000000']
             fontBold = -1 if font.fontBold else 0
             fontItalic = -1 if font.fontItalic else 0
             fontUnderline = -1 if font.fontUnderline else 0
             fontStrikeout = -1 if font.fontStrikeout else 0
-            self.subtitleArgs[subNumber] = [font.fontName, font.fontSize, self.ffmpegColor(font.fontColor), secondColor,
+            self.subtitleArgs[subNumber] = [font.fontName, font.fontSize, self.ffmpegColor(font.fontColor), self.karaokDict[subNumber][1],
                                             self.ffmpegColor(font.outlineColor), self.ffmpegColor(font.shadowColor),
                                             fontBold, fontItalic, fontUnderline, fontStrikeout, 100, 100, 0, 0, 1,
                                             font.outlineSizeBox.currentText(), font.shadowSizeBox.currentText(),
@@ -612,7 +616,7 @@ class VideoDecoder(QDialog):
                                             int(self.videoWidth * (font.RAlignSlider.value() / 100)),
                                             int(self.videoHeight * (font.VAlignSlider.value() / 100)), 1]
         self.decodeArgs.append(self.subtitleArgs)
-        self.decodeArgs.append([self.videoPath, self.layerCheckStatus])
+        self.decodeArgs.append([self.videoPath, self.layerCheckStatus, font.karaokeStatus])
 
     def exportSub(self):
         subtitlePath = QFileDialog.getSaveFileName(self, "选择字幕输出文件夹", None, "ASS字幕文件 (*.ass)")[0]
@@ -650,11 +654,24 @@ class VideoDecoder(QDialog):
         if preview:
             for subNumber in self.subtitleArgs:
                 num = subNumber + 1
-                if self.layerCheckStatus:
-                    line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % ('Subtitle_%s' % num, num, r'Hi! 我是第%s列字幕。' % num)
+                if self.karaokDict[subNumber][0]:
+                    karaX = self.karaokDict[subNumber][2]
+                    karaY = self.karaokDict[subNumber][3]
+                    if self.layerCheckStatus:
+                        line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,{\\K10\\move(%s,%s,%s,%s)}%s\n' % \
+                        ('Subtitle_%s' % num, num, karaX, karaY, karaX + 100, karaY, r'Hi! 我是第%s列歌词。' % num)
+                    else:
+                        line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,{\\K10\\move(%s,%s,%s,%s)}%s\n' % \
+                        (subNumber, 'Subtitle_%s' % num, num, karaX, karaY, karaX + 100, karaY, 'Hi! 我是第%s列歌词。' % num)
+                    ass.write(line)
                 else:
-                    line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % (subNumber, 'Subtitle_%s' % num, num, 'Hi! 我是第%s列字幕。' % num)
-                ass.write(line)
+                    if self.layerCheckStatus:
+                        line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % \
+                        ('Subtitle_%s' % num, num, r'Hi! 我是第%s列字幕。' % num)
+                    else:
+                        line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % \
+                        (subNumber, 'Subtitle_%s' % num, num, 'Hi! 我是第%s列字幕。' % num)
+                    ass.write(line)
             if tip:
                 QMessageBox.information(self, '导出字幕', '导出完成', QMessageBox.Yes)
         else:
@@ -662,11 +679,22 @@ class VideoDecoder(QDialog):
                 for subNumber in self.subtitleArgs:
                     for start, subData in self.subtitles[subNumber].items():
                         num = subNumber + 1
-                        if self.layerCheckStatus:
-                            line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,%s\n' % (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                        if self.karaokDict[subNumber][0]:
+                            karaX = self.karaokDict[subNumber][2]
+                            karaY = self.karaokDict[subNumber][3]
+                            if self.layerCheckStatus:
+                                line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,{\\K%s\\move(%s,%s,%s,%s)\\fad(500,500)}%s\n' % \
+                                (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
+                            else:
+                                line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,{\\K%s\\move(%s,%s,%s,%s)\\fad(500,500)}%s\n' % \
+                                (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
+                            ass.write(line)
                         else:
-                            line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,%s\n' % (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
-                        ass.write(line)
+                            if self.layerCheckStatus:
+                                line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,%s\n' % (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                            else:
+                                line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,%s\n' % (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                            ass.write(line)
             else:
                 for subNumber in self.subtitleArgs:
                     startKeys = list(self.subtitles[subNumber].keys())
@@ -675,12 +703,26 @@ class VideoDecoder(QDialog):
                             start = startKeys[cnt - 1]
                             subData = self.subtitles[subNumber][start]
                             num = subNumber + 1
-                            if self.layerCheckStatus:
-                                line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % ('Subtitle_%s' % num, num, subData[1])
+                            if self.karaokDict[subNumber][0]:
+                                karaX = self.karaokDict[subNumber][2]
+                                karaY = self.karaokDict[subNumber][3]
+                                if self.layerCheckStatus:
+                                    line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,{\\K1000\\move(%s,%s,%s,%s)}%s\n' % \
+                                    ('Subtitle_%s' % num, num, karaX, karaY, karaX + 100, karaY, subData[1])
+                                else:
+                                    line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,{\\K1000\\move(%s,%s,%s,%s)}%s\n' % \
+                                    (subNumber, 'Subtitle_%s' % num, num, karaX, karaY, karaX + 100, karaY, subData[1])
+                                ass.write(line)
+                                break
                             else:
-                                line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % (subNumber, 'Subtitle_%s' % num, num, subData[1])
-                            ass.write(line)
-                            break
+                                if self.layerCheckStatus:
+                                    line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % \
+                                    ('Subtitle_%s' % num, num, subData[1])
+                                else:
+                                    line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % \
+                                    (subNumber, 'Subtitle_%s' % num, num, subData[1])
+                                ass.write(line)
+                                break
         ass.close()
 
     def generatePreview(self, force=False):
@@ -732,47 +774,54 @@ class VideoDecoder(QDialog):
         self.startButton.clicked.connect(self.terminateEncode)
         self.processBar.setValue(0)
         outputPath = self.outputEdit.text()
-        if os.path.exists(outputPath):
-            os.remove(outputPath)
-        if os.path.exists('temp_sub.ass'):
-            os.remove('temp_sub.ass')
-        self.previewTimer.stop()
-        self.collectArgs()
-        self.writeAss(preview=False)
-
-        videoWidth = self.setEncode.exportVideoWidth.text()
-        videoHeight = self.setEncode.exportVideoHeight.text()
-        audio = ''
-        if self.setEncode.mixAudioPath.text():
-            audio = self.setEncode.mixAudioPath.text()
-        self.anime4k = self.setEncode.anime4KToken
-        encoder = self.setEncode.encoder.currentIndex()
-        if not encoder:
-            preset = ['veryslow', 'slow', 'medium', 'fast', 'ultrafast'][self.setEncode.exportVideoPreset.currentIndex()]
-        else:
-            preset = ['slow', 'medium', 'fast'][self.setEncode.exportVideoPreset.currentIndex()]
-        bit = self.setEncode.exportVideoBitrate.text() + 'k'
-        fps = self.setEncode.exportVideoFPS.text()
-        cmd = ['utils/ffmpeg.exe', '-y', '-i', self.videoPath]
-        if audio:
-            cmd += ['-i', audio, '-c:a', 'aac']
-        cmd += ['-s', '%sx%s' % (videoWidth, videoHeight), '-preset', preset, '-vf', 'ass=temp_sub.ass']
-        if encoder == 1:
-            cmd += ['-c:v', 'h264_nvenc']
-        elif encoder == 2:
-            cmd += ['-c:v', 'hevc_nvenc']
-        elif encoder == 3:
-            cmd += ['-c:v', 'h264_amf']
-        elif encoder == 4:
-            cmd += ['-c:v', 'hevc_amf']
-        cmd += ['-b:v', bit, '-r', fps]
-        cmd.append(outputPath)
-
-        self.videoEncoder = videoEncoder(self.videoPath, cmd)
-        self.videoEncoder.processBar.connect(self.setProcessBar)
-        self.videoEncoder.currentPos.connect(self.setEncodePreview)
-        self.videoEncoder.encodeResult.connect(self.encodeFinish)
-        self.videoEncoder.start()
+        try:
+            if os.path.exists(outputPath):
+                os.remove(outputPath)
+            encodeOK = True
+        except:
+            self.preview.setText('渲染失败 是否有进程正在占用：\n%s' % outputPath)
+            self.preview.setStyleSheet("QLabel{background:white;color:#232629}")
+            encodeOK = False
+        if encodeOK:
+            if os.path.exists('temp_sub.ass'):
+                os.remove('temp_sub.ass')
+            self.previewTimer.stop()
+            self.collectArgs()
+            self.writeAss(preview=False)
+    
+            videoWidth = self.setEncode.exportVideoWidth.text()
+            videoHeight = self.setEncode.exportVideoHeight.text()
+            audio = ''
+            if self.setEncode.mixAudioPath.text():
+                audio = self.setEncode.mixAudioPath.text()
+            self.anime4k = self.setEncode.anime4KToken
+            encoder = self.setEncode.encoder.currentIndex()
+            if not encoder:
+                preset = ['veryslow', 'slow', 'medium', 'fast', 'ultrafast'][self.setEncode.exportVideoPreset.currentIndex()]
+            else:
+                preset = ['slow', 'medium', 'fast'][self.setEncode.exportVideoPreset.currentIndex()]
+            bit = self.setEncode.exportVideoBitrate.text() + 'k'
+            fps = self.setEncode.exportVideoFPS.text()
+            cmd = ['utils/ffmpeg.exe', '-y', '-i', self.videoPath]
+            if audio:
+                cmd += ['-i', audio, '-c:a', 'aac']
+            cmd += ['-s', '%sx%s' % (videoWidth, videoHeight), '-preset', preset, '-vf', 'ass=temp_sub.ass']
+            if encoder == 1:
+                cmd += ['-c:v', 'h264_nvenc']
+            elif encoder == 2:
+                cmd += ['-c:v', 'hevc_nvenc']
+            elif encoder == 3:
+                cmd += ['-c:v', 'h264_amf']
+            elif encoder == 4:
+                cmd += ['-c:v', 'hevc_amf']
+            cmd += ['-b:v', bit, '-r', fps]
+            cmd.append(outputPath)
+    
+            self.videoEncoder = videoEncoder(self.videoPath, cmd)
+            self.videoEncoder.processBar.connect(self.setProcessBar)
+            self.videoEncoder.currentPos.connect(self.setEncodePreview)
+            self.videoEncoder.encodeResult.connect(self.encodeFinish)
+            self.videoEncoder.start()
 
     def setProcessBar(self, value):
         self.processBar.setValue(value)

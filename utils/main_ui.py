@@ -5,8 +5,7 @@ import subprocess
 from PySide2.QtWidgets import QWidget, QMainWindow, QGridLayout, QFileDialog, QToolBar,\
         QAction, QDialog, QStyle, QSlider, QLabel, QPushButton, QStackedWidget, QHBoxLayout,\
         QLineEdit, QTableWidget, QAbstractItemView, QTableWidgetItem, QGraphicsTextItem, QMenu,\
-        QGraphicsScene, QGraphicsView, QGraphicsDropShadowEffect, QComboBox, QMessageBox,\
-    QProgressBar, QColorDialog, QCheckBox
+        QGraphicsScene, QGraphicsView, QGraphicsDropShadowEffect, QComboBox, QMessageBox, QColorDialog
 from PySide2.QtMultimedia import QMediaPlayer
 from PySide2.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide2.QtGui import QIcon, QKeySequence, QFont, QBrush, QColor
@@ -14,6 +13,7 @@ from PySide2.QtCore import Qt, QTimer, QEvent, QPoint, Signal, QSizeF, QUrl
 from utils.youtube_downloader import YoutubeDnld
 from utils.subtitle import exportSubtitle
 from utils.videoDecoder import VideoDecoder
+from utils.separate_audio import Separate
 
 
 def calSubTime(t):
@@ -207,9 +207,12 @@ class MainWindow(QMainWindow):  # Main window
         self.duration = 60000
         self.bitrate = 2000
         self.fps = 60
+        self.autoSub = set()
 
         self.initProcess = InitProcess()
         self.previewSubtitle = PreviewSubtitle()
+        self.separate = Separate()
+        self.separate.voiceList.connect(self.setAutoSubtitleTimer)
         self.dnldWindow = YoutubeDnld()
         self.exportWindow = exportSubtitle()
         self.videoDecoder = VideoDecoder()
@@ -300,6 +303,12 @@ class MainWindow(QMainWindow):  # Main window
             for y in range(self.subtitle.rowCount()):
                 self.subtitle.setItem(y, x, QTableWidgetItem(''))
                 self.subtitle.item(y, x).setBackground(QBrush(QColor('#232629')))
+        for ms in self.autoSub:
+            y = ms // self.globalInterval - 1
+            if y < self.subtitle.rowCount():
+                if not self.subtitle.item(y, 0):
+                    self.subtitle.setItem(y, 0, QTableWidgetItem(''))
+                self.subtitle.item(y, 0).setBackground(QBrush(QColor('#35545d')))
         self.subtitle.setVerticalHeaderLabels([cnt2Time2(i, self.globalInterval) for i in range(self.subtitle.rowCount())])
         self.subtitle.cellChanged.connect(self.subEdit)
         self.initProcess.hide()
@@ -421,7 +430,7 @@ class MainWindow(QMainWindow):  # Main window
             position = index * self.globalInterval
             self.player.setPosition(position)
             self.videoSlider.setValue(position * 1000 // self.player.duration())
-            self.setTimeLabel()
+            self.setTimeLabel(position)
 
     def subEdit(self, row, index):
         repeat = self.subtitle.rowSpan(row, index)
@@ -545,6 +554,8 @@ class MainWindow(QMainWindow):  # Main window
         self.volumeMuteIcon = self.style().standardIcon(QStyle.SP_MediaVolumeMuted)
         self.volumeAction = toolBar.addAction(self.volumeIcon, '静音')
         self.volumeAction.triggered.connect(self.volumeMute)
+        separateAction = QAction(QIcon.fromTheme('document-open'), '&AI自动打轴', self, triggered=self.popSeparate)
+        playMenu.addAction(separateAction)
         previewAction = QAction(QIcon.fromTheme('document-open'), '&设置预览字幕', self, triggered=self.popPreview)
         playMenu.addAction(previewAction)
 
@@ -783,6 +794,7 @@ class MainWindow(QMainWindow):  # Main window
             self.timer.timeout.connect(self.timeOut)
             self.subTimer.start()
             self.subTimer.timeout.connect(self.subTimeOut)
+            self.autoSub = set()
 
     def popDnld(self):
         self.releaseKeyboard()
@@ -793,6 +805,23 @@ class MainWindow(QMainWindow):  # Main window
         self.releaseKeyboard()
         self.previewSubtitle.hide()
         self.previewSubtitle.show()
+
+    def popSeparate(self):
+        self.releaseKeyboard()
+        self.separate.setDefault(self.videoPath, self.duration)
+        self.separate.hide()
+        self.separate.show()
+
+    def setAutoSubtitleTimer(self, voiceList):
+        self.subtitle.cellChanged.disconnect(self.subEdit)
+        for ms in voiceList:
+            self.autoSub.add(ms)
+            y = ms // self.globalInterval - 1
+            if y < self.subtitle.rowCount():
+                if not self.subtitle.item(y, 0):
+                    self.subtitle.setItem(y, 0, QTableWidgetItem(''))
+                self.subtitle.item(y, 0).setBackground(QBrush(QColor('#35545d')))
+        self.subtitle.cellChanged.connect(self.subEdit)
 
     def decode(self):
         self.releaseKeyboard()
@@ -818,7 +847,7 @@ class MainWindow(QMainWindow):  # Main window
     def mediaPlayOnly(self):
         self.grabKeyboard()
         try:
-            timeText = self.videoPositionEdit.text().split(':')
+            timeText = self.videoPositionEdit.text().replace('：', ':').split(':')
             m, s = timeText[:2]
             if not m:
                 m = '00'
@@ -828,10 +857,8 @@ class MainWindow(QMainWindow):  # Main window
                 m = m[:3]
             if len(s) > 2:
                 s = s[:2]
-            if m.isdigit():
-                m = int(m)
-            if s.isdigit():
-                s = int(s)
+            m = int(m)
+            s = int(s)
             if s > 60:
                 s = 60
             total_m = self.player.duration() // 60000
@@ -842,7 +869,7 @@ class MainWindow(QMainWindow):  # Main window
         except:
             pass
         self.videoPositionEdit.setReadOnly(True)
-        self.timeStart()
+#         self.timeStart()
 
     def mediaPauseOnly(self):
         self.releaseKeyboard()
@@ -916,11 +943,12 @@ class MainWindow(QMainWindow):  # Main window
             self.volSlider.setValue(self.old_volumeValue)
             self.volumeAction.setIcon(self.volumeIcon)
 
-    def setTimeLabel(self):
-        now = self.player.position()
-        total = self.player.duration()
-        now = self.splitTime(now)
-        total = self.splitTime(total)
+    def setTimeLabel(self, pos=0):
+        if not pos:
+            now = self.splitTime(self.player.position())
+        else:
+            now = self.splitTime(pos)
+        total = self.splitTime(self.player.duration())
         self.videoPositionEdit.setText(now)
         self.videoPositionLabel.setText(' / %s  ' % total)
 
