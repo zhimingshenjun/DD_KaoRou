@@ -678,23 +678,24 @@ class VideoDecoder(QDialog):
             if not pos:
                 for subNumber in self.subtitleArgs:
                     for start, subData in self.subtitles[subNumber].items():
-                        num = subNumber + 1
-                        if self.karaokDict[subNumber][0]:
-                            karaX = self.karaokDict[subNumber][2]
-                            karaY = self.karaokDict[subNumber][3]
-                            if self.layerCheckStatus:
-                                line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,{\\K%s\\move(%s,%s,%s,%s)\\fad(500,500)}%s\n' % \
-                                (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
+                        if subData[1]:
+                            num = subNumber + 1
+                            if self.karaokDict[subNumber][0]:
+                                karaX = self.karaokDict[subNumber][2]
+                                karaY = self.karaokDict[subNumber][3]
+                                if self.layerCheckStatus:
+                                    line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,{\\K%s\\move(%s,%s,%s,%s)\\fad(500,500)}%s\n' % \
+                                    (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
+                                else:
+                                    line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,{\\K%s\\move(%s,%s,%s,%s)\\fad(500,500)}%s\n' % \
+                                    (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
+                                ass.write(line)
                             else:
-                                line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,{\\K%s\\move(%s,%s,%s,%s)\\fad(500,500)}%s\n' % \
-                                (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
-                            ass.write(line)
-                        else:
-                            if self.layerCheckStatus:
-                                line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,%s\n' % (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
-                            else:
-                                line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,%s\n' % (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
-                            ass.write(line)
+                                if self.layerCheckStatus:
+                                    line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,%s\n' % (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                                else:
+                                    line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,%s\n' % (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                                ass.write(line)
             else:
                 for subNumber in self.subtitleArgs:
                     startKeys = list(self.subtitles[subNumber].keys())

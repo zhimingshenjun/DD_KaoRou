@@ -14,6 +14,7 @@ from utils.youtube_downloader import YoutubeDnld
 from utils.subtitle import exportSubtitle
 from utils.videoDecoder import VideoDecoder
 from utils.separate_audio import Separate
+from utils.assSelect import assSelect
 
 
 def calSubTime(t):
@@ -210,6 +211,7 @@ class MainWindow(QMainWindow):  # Main window
         self.autoSub = set()
 
         self.initProcess = InitProcess()
+        self.assSelect = assSelect()
         self.previewSubtitle = PreviewSubtitle()
         self.separate = Separate()
         self.separate.voiceList.connect(self.setAutoSubtitleTimer)
@@ -314,58 +316,62 @@ class MainWindow(QMainWindow):  # Main window
         self.initProcess.hide()
 
     def addSubtitle(self, index):
-        subtitlePath = QFileDialog.getOpenFileName(self, "请选择字幕", None, "字幕文件 (*.srt *.vtt *.ass *.ssa)")[0]
+        subtitlePath = QFileDialog.getOpenFileName(self, "请选择字幕", None, "字幕文件 (*.srt *.vtt *.ass)")[0]
         if subtitlePath:
             self.initProcess.show()
             self.subtitle.cellChanged.disconnect(self.subEdit)
-            if subtitlePath.endswith('.ass') or subtitlePath.endswith('.ssa'):
-                p = subprocess.Popen(['utils/ffmpeg.exe', '-y', '-i', subtitlePath, 'temp_sub.srt'])
-                p.wait()
-                subtitlePath = 'temp_sub.srt'
             subData = {}
-            with open(subtitlePath, 'r', encoding='utf-8') as f:
-                f = f.readlines()
-            subText = ''
-            YoutubeAutoSub = False
-            for l in f:
-                if '<c>' in l:
-                    YoutubeAutoSub = True
-                    break
-            for cnt, l in enumerate(f):
-                if '<c>' in l:
-                    lineData = l.split('c>')
-                    if len(lineData) > 3:
-                        subText, start, _ = lineData[0].split('<')
-                        start = calSubTime(start[:-1]) // self.globalInterval * self.globalInterval
+            if subtitlePath.endswith('.ass'):
+                self.assSelect.setDefault(subtitlePath)
+                self.assSelect.hide()
+                self.assSelect.show()
+#                 p = subprocess.Popen(['utils/ffmpeg.exe', '-y', '-i', subtitlePath, 'temp_sub.srt'])
+#                 p.wait()
+#                 subtitlePath = 'temp_sub.srt'
+            else:
+                with open(subtitlePath, 'r', encoding='utf-8') as f:
+                    f = f.readlines()
+                subText = ''
+                YoutubeAutoSub = False
+                for l in f:
+                    if '<c>' in l:
+                        YoutubeAutoSub = True
+                        break
+                for cnt, l in enumerate(f):
+                    if '<c>' in l:
+                        lineData = l.split('c>')
+                        if len(lineData) > 3:
+                            subText, start, _ = lineData[0].split('<')
+                            start = calSubTime(start[:-1]) // self.globalInterval * self.globalInterval
+                            if start not in self.subtitleDict[index]:
+                                end = calSubTime(lineData[-3][1:-2]) // self.globalInterval * self.globalInterval
+                                for i in range(len(lineData) // 2):
+                                    subText += lineData[i * 2 + 1][:-2]
+                                subData[start] = [end - start, subText]
+                        else:
+                            subText, start, _ = lineData[0].split('<')
+                            start = calSubTime(start[:-1]) // self.globalInterval * self.globalInterval
+                            if start not in self.subtitleDict[index]:
+                                subText += lineData[1][:-2]
+                                subData[start] = [self.globalInterval, subText]
+                    elif '-->' in l and f[cnt + 2].strip() and '<c>' not in f[cnt + 2]:
+                        subText = f[cnt + 2][:-1]
+                        start, end = l.strip().replace(' ', '').split('-->')
+                        start = calSubTime(start) // self.globalInterval * self.globalInterval
                         if start not in self.subtitleDict[index]:
-                            end = calSubTime(lineData[-3][1:-2]) // self.globalInterval * self.globalInterval
-                            for i in range(len(lineData) // 2):
-                                subText += lineData[i * 2 + 1][:-2]
+                            end = calSubTime(end) // self.globalInterval * self.globalInterval
                             subData[start] = [end - start, subText]
-                    else:
-                        subText, start, _ = lineData[0].split('<')
-                        start = calSubTime(start[:-1]) // self.globalInterval * self.globalInterval
+                    if '-->' in l and f[cnt + 1].strip() and not YoutubeAutoSub:
+                        start, end = l.strip().replace(' ', '').split('-->')
+                        start = calSubTime(start) // self.globalInterval * self.globalInterval
                         if start not in self.subtitleDict[index]:
-                            subText += lineData[1][:-2]
-                            subData[start] = [self.globalInterval, subText]
-                elif '-->' in l and f[cnt + 2].strip() and '<c>' not in f[cnt + 2]:
-                    subText = f[cnt + 2][:-1]
-                    start, end = l.strip().replace(' ', '').split('-->')
-                    start = calSubTime(start) // self.globalInterval * self.globalInterval
-                    if start not in self.subtitleDict[index]:
-                        end = calSubTime(end) // self.globalInterval * self.globalInterval
-                        subData[start] = [end - start, subText]
-                if '-->' in l and f[cnt + 1].strip() and not YoutubeAutoSub:
-                    start, end = l.strip().replace(' ', '').split('-->')
-                    start = calSubTime(start) // self.globalInterval * self.globalInterval
-                    if start not in self.subtitleDict[index]:
-                        end = calSubTime(end) // self.globalInterval * self.globalInterval
-                        delta = end - start
-                        if delta > 10:
-                            if '<b>' in f[cnt + 1]:
-                                subData[start] = [delta, f[cnt + 1].split('<b>')[1].split('<')[0]]
-                            else:
-                                subData[start] = [delta, f[cnt + 1][:-1]]
+                            end = calSubTime(end) // self.globalInterval * self.globalInterval
+                            delta = end - start
+                            if delta > 10:
+                                if '<b>' in f[cnt + 1]:
+                                    subData[start] = [delta, f[cnt + 1].split('<b>')[1].split('<')[0]]
+                                else:
+                                    subData[start] = [delta, f[cnt + 1][:-1]]
             self.subtitleDict[index].update(subData)
             maxRow = 0
             for _, v in self.subtitleDict.items():
@@ -438,6 +444,7 @@ class MainWindow(QMainWindow):  # Main window
         self.setSubtitleDict(row, index, repeat, firstText)
         self.subtitle.cellChanged.disconnect(self.subEdit)
         for cnt in range(repeat):
+            print(row + cnt, index)
             self.subtitle.setItem(row + cnt, index, QTableWidgetItem(firstText))
             if self.subtitle.item(row + cnt, index).text():
                 self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
@@ -446,7 +453,8 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.cellChanged.connect(self.subEdit)
 
     def setSubtitleDict(self, row, index, num, text):
-        self.subtitleDict[index][row * self.globalInterval] = [num * self.globalInterval, text]
+        if text:
+            self.subtitleDict[index][row * self.globalInterval] = [num * self.globalInterval, text]
 
     def popTableMenu(self, pos):
         self.subtitle.cellChanged.disconnect(self.subEdit)
@@ -475,17 +483,20 @@ class MainWindow(QMainWindow):  # Main window
                         self.clipBoard.append('')
                 break
         elif action == paste:
-            self.subtitle.cellChanged.connect(self.subEdit)
             for x in xSet:
                 for cnt, text in enumerate(self.clipBoard):
+                    self.subtitle.setSpan(yList[0] + cnt, x, 1, 1)
                     self.subtitle.setItem(yList[0] + cnt, x, QTableWidgetItem(text))
-                    self.subtitleDict[x][(yList[0] + cnt) * self.globalInterval] = [self.globalInterval, text]
-            self.subtitle.cellChanged.disconnect(self.subEdit)
+                    if text:
+                        self.subtitle.item(yList[0] + cnt, x).setBackground(QBrush(QColor('#35545d')))
+                        self.subtitleDict[x][(yList[0] + cnt) * self.globalInterval] = [self.globalInterval, text]
+                    else:
+                        self.subtitle.item(yList[0] + cnt, x).setBackground(QBrush(QColor('#232629')))
         elif action == delete:
-            self.subtitle.cellChanged.connect(self.subEdit)
             for x in xSet:
                 for y in range(yList[0], yList[1] + 1):
                     if self.subtitle.item(y, x):
+                        self.subtitle.setSpan(y, x, 1, 1)
                         if self.subtitle.item(y, x).text():
                             self.subtitle.setItem(y, x, QTableWidgetItem(''))
                             self.subtitle.item(y, x).setBackground(QBrush(QColor('#232629')))
@@ -764,19 +775,24 @@ class MainWindow(QMainWindow):  # Main window
             cmd = ['utils/ffmpeg.exe', '-i', self.videoPath]
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             p.wait()
-            for l in p.stdout.readlines():
-                l = l.decode('utf8')
-                if 'Duration' in l:
-                    self.duration = calSubTime(l.split(' ')[3][:-1])
-                    self.bitrate = int(l.split(' ')[-2])
-                if 'Stream' in l and 'DAR' in l:
-                    self.videoWidth, self.videoHeight = map(int, l.split(' [')[0].split(' ')[-1].split('x'))
-                    args = l.split(',')
-                    for arg in args:
-                        if 'fps' in arg:
-                            self.fps = int(arg.split('fps')[0])
-                            break
-                    break
+            try:
+                for l in p.stdout.readlines():
+                    l = l.decode('utf8')
+                    if 'Duration' in l:
+                        self.duration = calSubTime(l.split(' ')[3][:-1])
+                        self.bitrate = int(l.split(' ')[-2])
+                    if 'Stream' in l and 'DAR' in l:
+                        args = l.split(',')
+                        resolution = args[2].replace(' ', '')
+                        if '[' in resolution:
+                            resolution = resolution.split('[')[0]
+                        self.videoWidth, self.videoHeight = map(int, resolution.split('x'))
+                        for arg in args:
+                            if 'fps' in arg:
+                                self.fps = float(arg.split('fps')[0])
+                        break
+            except:
+                pass
             self.initProcess.show()
             self.subtitle.cellChanged.disconnect(self.subEdit)
             self.subtitle.setRowCount(self.duration // self.globalInterval + 1)
