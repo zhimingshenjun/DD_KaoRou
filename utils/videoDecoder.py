@@ -238,15 +238,15 @@ class fontWidget(QWidget):
         self.fontItalic = False
         self.fontUnderline = False
         self.fontStrikeout = False
-        fontBold = '粗体' if self.fontBold else ''
-        fontItalic = '斜体' if self.fontItalic else ''
-        fontUnderline = '下划线' if self.fontUnderline else ''
-        fontStrikeOut = '删除线' if self.fontStrikeout else ''
         self.fontColor = '#ffffff'
         self.secondColor = '#ff5cf7'
         self.outlineColor = '#000000'
         self.shadowColor = '#696969'
 
+        fontBold = '粗体' if self.fontBold else ''
+        fontItalic = '斜体' if self.fontItalic else ''
+        fontUnderline = '下划线' if self.fontUnderline else ''
+        fontStrikeOut = '删除线' if self.fontStrikeout else ''
         self.optionLayout = QGridLayout()
         self.setLayout(self.optionLayout)
         self.fontSelect = QPushButton('%s%s号%s%s%s%s' % (self.fontName, self.fontSize, fontBold, fontItalic, fontUnderline, fontStrikeOut))
@@ -331,7 +331,6 @@ class fontWidget(QWidget):
         self.LAlignSlider.setTickPosition(QSlider.TicksAbove)
         self.LAlignSlider.setSingleStep(10)
         self.LAlignSlider.setTickInterval(20)
-        self.LAlignSlider.setValue(10)
         self.optionLayout.addWidget(self.LAlignSlider, 5, 0, 1, 1)
         self.LAlignSlider.setOrientation(Qt.Horizontal)
         self.LAlignLabel = QLabel('左边距')
@@ -570,6 +569,59 @@ class VideoDecoder(QDialog):
             if -1 in self.subtitles[index]:
                 del self.subtitles[index][-1]
 
+    def setSubDictStyle(self, assSummary):
+        subNumber = assSummary[0]
+        assDict = assSummary[1]
+        fontName = assDict['Fontname']
+        fontSize = assDict['Fontsize']
+        fontBold = True if assDict['Bold'] == '-1' else False
+        fontItalic = True if assDict['Italic'] == '-1' else False
+        fontUnderline = True if assDict['Underline'] == '-1' else False
+        fontStrikeOut = True if assDict['StrikeOut'] == '-1' else False
+        fontColor = self.rgbColor(assDict['PrimaryColour'])
+        secondColor = self.rgbColor(assDict['SecondaryColour'])
+        outlineColor = self.rgbColor(assDict['OutlineColour'])
+        shadowColor = self.rgbColor(assDict['BackColour'])
+        outline = int(assDict['Outline'])
+        shadow = int(assDict['Shadow'])
+        alignment = int(assDict['Alignment']) - 1
+        VA = int(assDict['MarginV'])
+        LA = int(assDict['MarginL'])
+        RA = int(assDict['MarginR'])
+
+        tabPage = self.subDict[subNumber]
+        tabPage.fontName = fontName
+        tabPage.fontSize = fontSize
+        tabPage.fontBold = fontBold
+        tabPage.fontItalic = fontItalic
+        tabPage.fontUnderline = fontUnderline
+        tabPage.fontStrikeout = fontStrikeOut
+        tabPage.fontColor = fontColor
+        tabPage.secondColor = secondColor
+        tabPage.outlineColor = outlineColor
+        tabPage.shadowColor = shadowColor
+
+        fontBold = '粗体' if fontBold else ''
+        fontItalic = '斜体' if fontItalic else ''
+        fontUnderline = '下划线' if fontUnderline else ''
+        fontStrikeOut = '删除线' if fontStrikeOut else ''
+
+        tabPage.fontSelect.setText('%s%s号%s%s%s%s' % (fontName, fontSize, fontBold, fontItalic, fontUnderline, fontStrikeOut))
+        tabPage.fontColorSelect.setText(fontColor)
+        tabPage.fontColorSelect.setStyleSheet('background-color:%s;color:%s' % (fontColor, self.colorReverse(fontColor)))
+        tabPage.secondColorSelect.setText(secondColor)
+        tabPage.secondColorSelect.setStyleSheet('background-color:%s;color:%s' % (secondColor, self.colorReverse(secondColor)))
+        tabPage.outlineSizeBox.setCurrentIndex(outline)
+        tabPage.outlineColorSelect.setText(outlineColor)
+        tabPage.outlineColorSelect.setStyleSheet('background-color:%s;color:%s' % (outlineColor, self.colorReverse(outlineColor)))
+        tabPage.shadowSizeBox.setCurrentIndex(shadow)
+        tabPage.shadowColorSelect.setText(shadowColor)
+        tabPage.shadowColorSelect.setStyleSheet('background-color:%s;color:%s' % (shadowColor, self.colorReverse(shadowColor)))
+        tabPage.align.setCurrentIndex(alignment)
+        tabPage.VAlignSlider.setValue(VA * 100 // self.videoHeight)
+        tabPage.LAlignSlider.setValue(LA * 100 // self.videoWidth)
+        tabPage.RAlignSlider.setValue(RA * 100 // self.videoWidth) 
+
     def setPreviewSlider(self, p):
         pos = p.x() / self.previewSlider.width() * 1000
         if pos > 1000:
@@ -580,11 +632,30 @@ class VideoDecoder(QDialog):
         self.videoPos = pos * self.duration // 1000000
 
     def ffmpegColor(self, color):
+        '''
+        rgb color --> ffmpeg color
+        '''
         color = color.upper()
         r = color[1:3]
         g = color[3:5]
         b = color[5:7]
         return '&H00%s%s%s' % (b, g, r)
+
+    def rgbColor(self, color):
+        '''
+        ffmpeg color --> rgb color
+        '''
+        color = color[-6:].lower()
+        b = color[:2]
+        g = color[2:4]
+        r = color[4:6]
+        return '#%s%s%s' % (r, g, b)
+
+    def colorReverse(self, color):
+        r = 255 - int(color[1:3], 16)
+        g = 255 - int(color[3:5], 16)
+        b = 255 - int(color[5:7], 16)
+        return '#%s%s%s' % (hex(r)[2:], hex(g)[2:], hex(b)[2:])
 
     def collectArgs(self):
         self.decodeArgs = [[self.advanced.title.text(), self.advanced.originalScript.text(), self.advanced.translation.text(),
