@@ -6,8 +6,8 @@ from PySide2.QtWidgets import QWidget, QMainWindow, QGridLayout, QFileDialog, QT
         QAction, QDialog, QStyle, QSlider, QLabel, QPushButton, QStackedWidget, QHBoxLayout,\
         QLineEdit, QTableWidget, QAbstractItemView, QTableWidgetItem, QGraphicsTextItem, QMenu,\
         QGraphicsScene, QGraphicsView, QGraphicsDropShadowEffect, QComboBox, QMessageBox, QColorDialog
-from PySide2.QtMultimedia import QMediaPlayer
-from PySide2.QtMultimediaWidgets import QGraphicsVideoItem
+# from PySide2.QtMultimedia import QMediaPlayer
+# from PySide2.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide2.QtGui import QIcon, QKeySequence, QFont, QBrush, QColor
 from PySide2.QtCore import Qt, QTimer, QEvent, QPoint, Signal, QSizeF, QUrl
 from utils.youtube_downloader import YoutubeDnld
