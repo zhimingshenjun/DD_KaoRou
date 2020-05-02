@@ -15,7 +15,6 @@ def ms2Time(ms):
     h, m = divmod(ms, 3600000)
     m, s = divmod(m, 60000)
     s, ms = divmod(s, 1000)
-    h = ('0%s' % h)[-2:]
     m = ('0%s' % m)[-2:]
     s = ('0%s' % s)[-2:]
     ms = ('%s0' % ms)[:2]
