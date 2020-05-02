@@ -15,7 +15,6 @@ def ms2Time(ms):
     h, m = divmod(ms, 3600000)
     m, s = divmod(m, 60000)
     s, ms = divmod(s, 1000)
-    h = ('0%s' % h)[-2:]
     m = ('0%s' % m)[-2:]
     s = ('0%s' % s)[-2:]
     ms = ('%s0' % ms)[:2]
@@ -145,7 +144,7 @@ class encodeOption(QWidget):
         layout.addWidget(QLabel(), 1, 5, 1, 1)
         layout.addWidget(QLabel('编码器'), 1, 6, 1, 1)
         self.encoder = QComboBox()
-        self.encoder.addItems(['CPU', 'GPU N卡', 'GPU A卡'])
+        self.encoder.addItems(['CPU', 'N卡 H264', 'N卡 HEVC', 'A卡 H264', 'A卡 HEVC'])
         self.encoder.currentIndexChanged.connect(self.encoderChange)
         layout.addWidget(self.encoder, 1, 7, 1, 1)
 
@@ -166,16 +165,16 @@ class encodeOption(QWidget):
             self.anime4k.setStyleSheet('background-color:#31363b')
 
     def openAudio(self):
-        self.audioPath = QFileDialog.getOpenFileName(self, "请选择音频文件", None, "音频文件 (*.m4a *.mp3 *.wav);;所有文件(*.*)")[0]
+        self.audioPath = QFileDialog.getOpenFileName(self, "请选择音频文件", None, "音频文件 (*.m4a *.mp3 *.wav *.wma);;所有文件(*.*)")[0]
         if self.audioPath:
             self.mixAudioPath.setText(self.audioPath)
 
     def encoderChange(self, index):
+        self.exportVideoPreset.clear()
         if not index:
-            self.exportVideoPreset.setEnabled(True)
+            self.exportVideoPreset.addItems(['极致(最慢)', '较高(较慢)', '中等(中速)', '较低(较快)', '最低(最快)'])
         else:
-            self.exportVideoPreset.setCurrentIndex(2)
-            self.exportVideoPreset.setEnabled(False)
+            self.exportVideoPreset.addItems(['较高(较慢)', '中等(中速)', '较低(较快)'])
 
 
 class advanced(QWidget):
@@ -238,15 +237,15 @@ class fontWidget(QWidget):
         self.fontItalic = False
         self.fontUnderline = False
         self.fontStrikeout = False
+        self.fontColor = '#ffffff'
+        self.secondColor = '#ff5cf7'
+        self.outlineColor = '#000000'
+        self.shadowColor = '#696969'
+
         fontBold = '粗体' if self.fontBold else ''
         fontItalic = '斜体' if self.fontItalic else ''
         fontUnderline = '下划线' if self.fontUnderline else ''
         fontStrikeOut = '删除线' if self.fontStrikeout else ''
-        self.fontColor = '#ffffff'
-        self.secondColor = '#000000'
-        self.outlineColor = '#000000'
-        self.shadowColor = '#696969'
-
         self.optionLayout = QGridLayout()
         self.setLayout(self.optionLayout)
         self.fontSelect = QPushButton('%s%s号%s%s%s%s' % (self.fontName, self.fontSize, fontBold, fontItalic, fontUnderline, fontStrikeOut))
@@ -320,6 +319,7 @@ class fontWidget(QWidget):
         self.VAlignSlider.setTickPosition(QSlider.TicksAbove)
         self.VAlignSlider.setSingleStep(10)
         self.VAlignSlider.setTickInterval(20)
+        self.VAlignSlider.setValue(10)
         self.optionLayout.addWidget(self.VAlignSlider, 4, 3, 1, 1)
         self.VAlignSlider.setOrientation(Qt.Horizontal)
         self.VAlignLabel = QLabel('垂直边距')
@@ -382,7 +382,7 @@ class fontWidget(QWidget):
         color = QColorDialog.getColor()
         if color.isValid():
             self.secondColor = color.name()
-            self.secondColorSelect.setText(self.fontColor)
+            self.secondColorSelect.setText(self.secondColor)
             self.secondColorSelect.setStyleSheet('background-color:%s;color:%s' % (self.secondColor, self.colorReverse(self.secondColor)))
 
     def getOutlineColor(self):
@@ -568,6 +568,59 @@ class VideoDecoder(QDialog):
             if -1 in self.subtitles[index]:
                 del self.subtitles[index][-1]
 
+    def setSubDictStyle(self, assSummary):
+        subNumber = assSummary[0]
+        assDict = assSummary[1]
+        fontName = assDict['Fontname']
+        fontSize = assDict['Fontsize']
+        fontBold = True if assDict['Bold'] == '-1' else False
+        fontItalic = True if assDict['Italic'] == '-1' else False
+        fontUnderline = True if assDict['Underline'] == '-1' else False
+        fontStrikeOut = True if assDict['StrikeOut'] == '-1' else False
+        fontColor = self.rgbColor(assDict['PrimaryColour'])
+        secondColor = self.rgbColor(assDict['SecondaryColour'])
+        outlineColor = self.rgbColor(assDict['OutlineColour'])
+        shadowColor = self.rgbColor(assDict['BackColour'])
+        outline = int(assDict['Outline'])
+        shadow = int(assDict['Shadow'])
+        alignment = int(assDict['Alignment']) - 1
+        VA = int(assDict['MarginV'])
+        LA = int(assDict['MarginL'])
+        RA = int(assDict['MarginR'])
+
+        tabPage = self.subDict[subNumber]
+        tabPage.fontName = fontName
+        tabPage.fontSize = fontSize
+        tabPage.fontBold = fontBold
+        tabPage.fontItalic = fontItalic
+        tabPage.fontUnderline = fontUnderline
+        tabPage.fontStrikeout = fontStrikeOut
+        tabPage.fontColor = fontColor
+        tabPage.secondColor = secondColor
+        tabPage.outlineColor = outlineColor
+        tabPage.shadowColor = shadowColor
+
+        fontBold = '粗体' if fontBold else ''
+        fontItalic = '斜体' if fontItalic else ''
+        fontUnderline = '下划线' if fontUnderline else ''
+        fontStrikeOut = '删除线' if fontStrikeOut else ''
+
+        tabPage.fontSelect.setText('%s%s号%s%s%s%s' % (fontName, fontSize, fontBold, fontItalic, fontUnderline, fontStrikeOut))
+        tabPage.fontColorSelect.setText(fontColor)
+        tabPage.fontColorSelect.setStyleSheet('background-color:%s;color:%s' % (fontColor, self.colorReverse(fontColor)))
+        tabPage.secondColorSelect.setText(secondColor)
+        tabPage.secondColorSelect.setStyleSheet('background-color:%s;color:%s' % (secondColor, self.colorReverse(secondColor)))
+        tabPage.outlineSizeBox.setCurrentIndex(outline)
+        tabPage.outlineColorSelect.setText(outlineColor)
+        tabPage.outlineColorSelect.setStyleSheet('background-color:%s;color:%s' % (outlineColor, self.colorReverse(outlineColor)))
+        tabPage.shadowSizeBox.setCurrentIndex(shadow)
+        tabPage.shadowColorSelect.setText(shadowColor)
+        tabPage.shadowColorSelect.setStyleSheet('background-color:%s;color:%s' % (shadowColor, self.colorReverse(shadowColor)))
+        tabPage.align.setCurrentIndex(alignment)
+        tabPage.VAlignSlider.setValue(VA * 100 // self.videoHeight)
+        tabPage.LAlignSlider.setValue(LA * 100 // self.videoWidth)
+        tabPage.RAlignSlider.setValue(RA * 100 // self.videoWidth) 
+
     def setPreviewSlider(self, p):
         pos = p.x() / self.previewSlider.width() * 1000
         if pos > 1000:
@@ -578,11 +631,30 @@ class VideoDecoder(QDialog):
         self.videoPos = pos * self.duration // 1000000
 
     def ffmpegColor(self, color):
+        '''
+        rgb color --> ffmpeg color
+        '''
         color = color.upper()
         r = color[1:3]
         g = color[3:5]
         b = color[5:7]
         return '&H00%s%s%s' % (b, g, r)
+
+    def rgbColor(self, color):
+        '''
+        ffmpeg color --> rgb color
+        '''
+        color = color[-6:].lower()
+        b = color[:2]
+        g = color[2:4]
+        r = color[4:6]
+        return '#%s%s%s' % (r, g, b)
+
+    def colorReverse(self, color):
+        r = 255 - int(color[1:3], 16)
+        g = 255 - int(color[3:5], 16)
+        b = 255 - int(color[5:7], 16)
+        return '#%s%s%s' % (hex(r)[2:], hex(g)[2:], hex(b)[2:])
 
     def collectArgs(self):
         self.decodeArgs = [[self.advanced.title.text(), self.advanced.originalScript.text(), self.advanced.translation.text(),
@@ -594,16 +666,18 @@ class VideoDecoder(QDialog):
             if subCheck:
                 self.selectedSubDict[subNumber] = self.subDict[subNumber]
         self.subtitleArgs = {}
+        self.karaokDict = {}
         for subNumber, font in self.selectedSubDict.items():
-            if font.karaoke.isChecked():
-                secondColor = self.ffmpegColor(font.secondColor)
+            if font.karaokeStatus:
+                self.karaokDict[subNumber] = [True, self.ffmpegColor(font.secondColor), int(self.videoWidth * (font.LAlignSlider.value() / 100)),
+                                              int(self.videoHeight * (font.VAlignSlider.value() / 100))]
             else:
-                secondColor = '&H00000000'
+                self.karaokDict[subNumber] = [False, '&H00000000']
             fontBold = -1 if font.fontBold else 0
             fontItalic = -1 if font.fontItalic else 0
             fontUnderline = -1 if font.fontUnderline else 0
             fontStrikeout = -1 if font.fontStrikeout else 0
-            self.subtitleArgs[subNumber] = [font.fontName, font.fontSize, self.ffmpegColor(font.fontColor), secondColor,
+            self.subtitleArgs[subNumber] = [font.fontName, font.fontSize, self.ffmpegColor(font.fontColor), self.karaokDict[subNumber][1],
                                             self.ffmpegColor(font.outlineColor), self.ffmpegColor(font.shadowColor),
                                             fontBold, fontItalic, fontUnderline, fontStrikeout, 100, 100, 0, 0, 1,
                                             font.outlineSizeBox.currentText(), font.shadowSizeBox.currentText(),
@@ -612,7 +686,7 @@ class VideoDecoder(QDialog):
                                             int(self.videoWidth * (font.RAlignSlider.value() / 100)),
                                             int(self.videoHeight * (font.VAlignSlider.value() / 100)), 1]
         self.decodeArgs.append(self.subtitleArgs)
-        self.decodeArgs.append([self.videoPath, self.layerCheckStatus])
+        self.decodeArgs.append([self.videoPath, self.layerCheckStatus, font.karaokeStatus])
 
     def exportSub(self):
         subtitlePath = QFileDialog.getSaveFileName(self, "选择字幕输出文件夹", None, "ASS字幕文件 (*.ass)")[0]
@@ -650,23 +724,48 @@ class VideoDecoder(QDialog):
         if preview:
             for subNumber in self.subtitleArgs:
                 num = subNumber + 1
-                if self.layerCheckStatus:
-                    line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % ('Subtitle_%s' % num, num, r'Hi! 我是第%s列字幕。' % num)
+                if self.karaokDict[subNumber][0]:
+                    karaX = self.karaokDict[subNumber][2]
+                    karaY = self.karaokDict[subNumber][3]
+                    if self.layerCheckStatus:
+                        line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,{\\K10\\move(%s,%s,%s,%s)}%s\n' % \
+                        ('Subtitle_%s' % num, num, karaX, karaY, karaX + 100, karaY, r'Hi! 我是第%s列歌词。' % num)
+                    else:
+                        line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,{\\K10\\move(%s,%s,%s,%s)}%s\n' % \
+                        (subNumber, 'Subtitle_%s' % num, num, karaX, karaY, karaX + 100, karaY, 'Hi! 我是第%s列歌词。' % num)
+                    ass.write(line)
                 else:
-                    line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % (subNumber, 'Subtitle_%s' % num, num, 'Hi! 我是第%s列字幕。' % num)
-                ass.write(line)
+                    if self.layerCheckStatus:
+                        line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % \
+                        ('Subtitle_%s' % num, num, r'Hi! 我是第%s列字幕。' % num)
+                    else:
+                        line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % \
+                        (subNumber, 'Subtitle_%s' % num, num, 'Hi! 我是第%s列字幕。' % num)
+                    ass.write(line)
             if tip:
                 QMessageBox.information(self, '导出字幕', '导出完成', QMessageBox.Yes)
         else:
             if not pos:
                 for subNumber in self.subtitleArgs:
                     for start, subData in self.subtitles[subNumber].items():
-                        num = subNumber + 1
-                        if self.layerCheckStatus:
-                            line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,%s\n' % (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
-                        else:
-                            line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,%s\n' % (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
-                        ass.write(line)
+                        if subData[1]:
+                            num = subNumber + 1
+                            if self.karaokDict[subNumber][0]:
+                                karaX = self.karaokDict[subNumber][2]
+                                karaY = self.karaokDict[subNumber][3]
+                                if self.layerCheckStatus:
+                                    line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,{\\K%s\\move(%s,%s,%s,%s)\\fad(500,500)}%s\n' % \
+                                    (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
+                                else:
+                                    line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,{\\K%s\\move(%s,%s,%s,%s)\\fad(500,500)}%s\n' % \
+                                    (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
+                                ass.write(line)
+                            else:
+                                if self.layerCheckStatus:
+                                    line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,%s\n' % (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                                else:
+                                    line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,%s\n' % (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                                ass.write(line)
             else:
                 for subNumber in self.subtitleArgs:
                     startKeys = list(self.subtitles[subNumber].keys())
@@ -675,12 +774,26 @@ class VideoDecoder(QDialog):
                             start = startKeys[cnt - 1]
                             subData = self.subtitles[subNumber][start]
                             num = subNumber + 1
-                            if self.layerCheckStatus:
-                                line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % ('Subtitle_%s' % num, num, subData[1])
+                            if self.karaokDict[subNumber][0]:
+                                karaX = self.karaokDict[subNumber][2]
+                                karaY = self.karaokDict[subNumber][3]
+                                if self.layerCheckStatus:
+                                    line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,{\\K1000\\move(%s,%s,%s,%s)}%s\n' % \
+                                    ('Subtitle_%s' % num, num, karaX, karaY, karaX + 100, karaY, subData[1])
+                                else:
+                                    line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,{\\K1000\\move(%s,%s,%s,%s)}%s\n' % \
+                                    (subNumber, 'Subtitle_%s' % num, num, karaX, karaY, karaX + 100, karaY, subData[1])
+                                ass.write(line)
+                                break
                             else:
-                                line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % (subNumber, 'Subtitle_%s' % num, num, subData[1])
-                            ass.write(line)
-                            break
+                                if self.layerCheckStatus:
+                                    line = 'Dialogue: 0,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % \
+                                    ('Subtitle_%s' % num, num, subData[1])
+                                else:
+                                    line = 'Dialogue: %s,0:00:00.00,0:00:10.00,%s,#%s,0,0,0,,%s\n' % \
+                                    (subNumber, 'Subtitle_%s' % num, num, subData[1])
+                                ass.write(line)
+                                break
         ass.close()
 
     def generatePreview(self, force=False):
@@ -707,7 +820,7 @@ class VideoDecoder(QDialog):
             videoWidth = self.setEncode.exportVideoWidth.text()
             videoHeight = self.setEncode.exportVideoHeight.text()
             bit = self.setEncode.exportVideoBitrate.text() + 'k'
-            preset = ['veryslow', 'slower', 'medium', 'faster', 'ultrafast'][self.setEncode.exportVideoPreset.currentIndex()]
+            preset = ['veryslow', 'slow', 'medium', 'fast', 'ultrafast'][self.setEncode.exportVideoPreset.currentIndex()]
             cmd = ['utils/ffmpeg.exe', '-y', '-ss', str(self.videoPos), '-i', self.videoPath, '-frames', '1', '-vf', 'ass=temp_sub.ass',
                    '-s', '%sx%s' % (videoWidth, videoHeight), '-b:v', bit, '-preset', preset, '-q:v', '1', '-f', 'image2', 'temp_sub.jpg']
             if not self.videoPath:
@@ -732,39 +845,54 @@ class VideoDecoder(QDialog):
         self.startButton.clicked.connect(self.terminateEncode)
         self.processBar.setValue(0)
         outputPath = self.outputEdit.text()
-        if os.path.exists(outputPath):
-            os.remove(outputPath)
-        if os.path.exists('temp_sub.ass'):
-            os.remove('temp_sub.ass')
-        self.previewTimer.stop()
-        self.collectArgs()
-        self.writeAss(preview=False)
-
-        videoWidth = self.setEncode.exportVideoWidth.text()
-        videoHeight = self.setEncode.exportVideoHeight.text()
-        preset = ['veryslow', 'slower', 'medium', 'faster', 'ultrafast'][self.setEncode.exportVideoPreset.currentIndex()]
-        audio = ''
-        if self.setEncode.mixAudioPath.text():
-            audio = self.setEncode.mixAudioPath.text()
-        self.anime4k = self.setEncode.anime4KToken
-        encoder = self.setEncode.encoder.currentIndex()
-        bit = self.setEncode.exportVideoBitrate.text() + 'k'
-        fps = self.setEncode.exportVideoFPS.text()
-        cmd = ['utils/ffmpeg.exe', '-y', '-i', self.videoPath, '-b:v', bit, '-r', fps]
-        if audio:
-            cmd += ['-i', audio, '-c:a', 'aac']
-        cmd += ['-s', '%sx%s' % (videoWidth, videoHeight), '-preset', preset, '-vf', 'ass=temp_sub.ass']
-        if encoder == 1:
-            cmd += ['-c:v', 'h264_nvenc']
-        elif encoder == 2:
-            cmd += ['-c:v', 'h264_amf']
-        cmd.append(outputPath)
-
-        self.videoEncoder = videoEncoder(self.videoPath, cmd)
-        self.videoEncoder.processBar.connect(self.setProcessBar)
-        self.videoEncoder.currentPos.connect(self.setEncodePreview)
-        self.videoEncoder.encodeResult.connect(self.encodeFinish)
-        self.videoEncoder.start()
+        try:
+            if os.path.exists(outputPath):
+                os.remove(outputPath)
+            encodeOK = True
+        except:
+            self.preview.setText('渲染失败 是否有进程正在占用：\n%s' % outputPath)
+            self.preview.setStyleSheet("QLabel{background:white;color:#232629}")
+            encodeOK = False
+        if encodeOK:
+            if os.path.exists('temp_sub.ass'):
+                os.remove('temp_sub.ass')
+            self.previewTimer.stop()
+            self.collectArgs()
+            self.writeAss(preview=False)
+    
+            videoWidth = self.setEncode.exportVideoWidth.text()
+            videoHeight = self.setEncode.exportVideoHeight.text()
+            audio = ''
+            if self.setEncode.mixAudioPath.text():
+                audio = self.setEncode.mixAudioPath.text()
+            self.anime4k = self.setEncode.anime4KToken
+            encoder = self.setEncode.encoder.currentIndex()
+            if not encoder:
+                preset = ['veryslow', 'slow', 'medium', 'fast', 'ultrafast'][self.setEncode.exportVideoPreset.currentIndex()]
+            else:
+                preset = ['slow', 'medium', 'fast'][self.setEncode.exportVideoPreset.currentIndex()]
+            bit = self.setEncode.exportVideoBitrate.text() + 'k'
+            fps = self.setEncode.exportVideoFPS.text()
+            cmd = ['utils/ffmpeg.exe', '-y', '-i', self.videoPath]
+            if audio:
+                cmd += ['-i', audio, '-c:a', 'aac']
+            cmd += ['-s', '%sx%s' % (videoWidth, videoHeight), '-preset', preset, '-vf', 'ass=temp_sub.ass']
+            if encoder == 1:
+                cmd += ['-c:v', 'h264_nvenc']
+            elif encoder == 2:
+                cmd += ['-c:v', 'hevc_nvenc']
+            elif encoder == 3:
+                cmd += ['-c:v', 'h264_amf']
+            elif encoder == 4:
+                cmd += ['-c:v', 'hevc_amf']
+            cmd += ['-b:v', bit, '-r', fps]
+            cmd.append(outputPath)
+    
+            self.videoEncoder = videoEncoder(self.videoPath, cmd)
+            self.videoEncoder.processBar.connect(self.setProcessBar)
+            self.videoEncoder.currentPos.connect(self.setEncodePreview)
+            self.videoEncoder.encodeResult.connect(self.encodeFinish)
+            self.videoEncoder.start()
 
     def setProcessBar(self, value):
         self.processBar.setValue(value)

@@ -5,8 +5,7 @@ import subprocess
 from PySide2.QtWidgets import QWidget, QMainWindow, QGridLayout, QFileDialog, QToolBar,\
         QAction, QDialog, QStyle, QSlider, QLabel, QPushButton, QStackedWidget, QHBoxLayout,\
         QLineEdit, QTableWidget, QAbstractItemView, QTableWidgetItem, QGraphicsTextItem, QMenu,\
-        QGraphicsScene, QGraphicsView, QGraphicsDropShadowEffect, QComboBox, QMessageBox,\
-    QProgressBar, QColorDialog, QCheckBox
+        QGraphicsScene, QGraphicsView, QGraphicsDropShadowEffect, QComboBox, QMessageBox, QColorDialog
 from PySide2.QtMultimedia import QMediaPlayer
 from PySide2.QtMultimediaWidgets import QGraphicsVideoItem
 from PySide2.QtGui import QIcon, QKeySequence, QFont, QBrush, QColor
@@ -14,6 +13,9 @@ from PySide2.QtCore import Qt, QTimer, QEvent, QPoint, Signal, QSizeF, QUrl
 from utils.youtube_downloader import YoutubeDnld
 from utils.subtitle import exportSubtitle
 from utils.videoDecoder import VideoDecoder
+from utils.separate_audio import Separate
+from utils.assSelect import assSelect
+from utils.asyncTable import asyncTable, refillVerticalLabel
 
 
 def calSubTime(t):
@@ -22,11 +24,14 @@ def calSubTime(t):
     return int
     h:m:s.ms -> ms in total
     '''
-    h = int(t[:2])
-    m = int(t[3:5])
-    s = int(t[6:8])
-    t = t.replace(',', '.')
-    ms = int(t.split('.')[-1])
+    t = t.replace(',', '.').replace('：', ':')
+    h, m, s = t.split(':')
+    if '.' in s:
+        s, ms = s.split('.')
+        ms = ('%s00' % ms)[:3]
+    else:
+        ms = 0
+    h, m, s, ms = map(int, [h, m, s, ms])
     return h * 3600000 + m * 60000 + s * 1000 + ms
 
 
@@ -36,7 +41,7 @@ def calSubTime2(t):
     return int
     m:s.ms -> ms in total
     '''
-    t.replace(',', '.')
+    t.replace(',', '.').replace('：', ':')
     m, s = t.split(':')
     if '.' in s:
         s, ms = s.split('.')
@@ -49,28 +54,14 @@ def cnt2Time(cnt, interval):
     '''
     receive int
     return str
-    count of interval times -> h:m:s,ms
-    '''
-    h, m = divmod(cnt, 3600000 // interval)
-    m, s = divmod(m, 60000 // interval)
-    s, ms = divmod(s, 1000 // interval)
-    h = ('0%s' % h)[-2:]
-    m = ('0%s' % m)[-2:]
-    s = ('0%s' % s)[-2:]
-    return '%s:%s:%s,%s00' % (h, m, s, ms)
-
-
-def cnt2Time2(cnt, interval):
-    '''
-    receive int
-    return str
     count of interval times -> m:s.ms
     '''
-    m, s = divmod(cnt, 60000 // interval)
-    s, ms = divmod(s, 1000 // interval)
-    ms = ms * (interval // 100)
-    s = ('0%s' % s)[-2:]
-    return '%3s:%2s.%s' % (m, s, ms)
+    labels = []
+    for i in range(cnt):
+        m, s = divmod(i * interval, 60000)
+        s, ms = divmod(s, 1000)
+        labels.append(('%s:%02d.%03d' % (m, s, ms))[:-1])
+    return labels
 
 
 def ms2Time(ms):
@@ -207,9 +198,17 @@ class MainWindow(QMainWindow):  # Main window
         self.duration = 60000
         self.bitrate = 2000
         self.fps = 60
+        self.autoSub = []  # 自动打轴
+        self.tablePreset = ['#AI自动识别', True]
 
         self.initProcess = InitProcess()
+        self.assSelect = assSelect()
+        self.assSelect.assSummary.connect(self.addASSSub)
         self.previewSubtitle = PreviewSubtitle()
+        self.separate = Separate()
+        self.separate.clrSep.connect(self.clearAutoSub)
+        self.separate.voiceList.connect(self.setAutoSubtitle)
+        self.separate.tablePreset.connect(self.setTablePreset)
         self.dnldWindow = YoutubeDnld()
         self.exportWindow = exportSubtitle()
         self.videoDecoder = VideoDecoder()
@@ -265,7 +264,7 @@ class MainWindow(QMainWindow):  # Main window
             self.scene.addItem(srtTextItem)
 
     def setSubtitle(self):
-        self.subtitleDict = {x: {-1: [100, '']} for x in range(5)}
+        self.subtitleDict = {x: {-1: [20, '']} for x in range(5)}
         self.subTimer = QTimer()
         self.subTimer.setInterval(100)
         self.subtitle = QTableWidget()
@@ -275,7 +274,7 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.setColumnCount(5)
         self.subtitle.selectRow(0)
         self.subtitle.setHorizontalHeaderLabels(['%s' % (i + 1) for i in range(5)])
-        self.subtitle.setVerticalHeaderLabels([cnt2Time2(i, self.globalInterval) for i in range(self.subtitle.rowCount())])
+#         self.subtitle.setVerticalHeaderLabels([cnt2Time(i, self.globalInterval) for i in range(self.subtitle.rowCount())])
         for index in range(5):
             self.subtitle.setColumnWidth(index, 130)
         self.subtitle.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
@@ -284,99 +283,183 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.doubleClicked.connect(self.releaseKeyboard)
         self.subtitle.cellChanged.connect(self.subEdit)
         self.subtitle.verticalHeader().sectionClicked.connect(self.subHeaderClick)
+        self.subtitle.verticalHeader().setFixedWidth(70)
         self.subtitle.setContextMenuPolicy(Qt.CustomContextMenu)
         self.subtitle.customContextMenuRequested.connect(self.popTableMenu)
+        self.refill = refillVerticalLabel(0, self.globalInterval, self.subtitle)
+        self.refill.start()
+#         self.refillTimer = QTimer()
+#         self.refillTimer.setInterval(100)
+#         self.refillTimer.timeout.connect(self.refillVertical)
+#         self.refillTimer.start()
+        self.oldVerticalScrollValue = 0
         self.initSubtitle()
+
+#     def refillVertical(self):
+#         scrollValue = self.subtitle.verticalScrollBar().value()
+#         if scrollValue != self.oldVerticalScrollValue:
+#             self.oldVerticalScrollValue = scrollValue
+#             refillToken = False
+#             for y in range(scrollValue - 1, scrollValue + 60):
+#                 if not self.subtitle.verticalHeaderItem(y):
+#                     refillToken = True
+#                     break
+#             if refillToken:
+#                 if self.refill.isRunning:
+#                     self.refill.terminate()
+#                     self.refill.quit()
+#                     self.refill.wait()
+#                 self.refill = refillVerticalLabel(scrollValue, self.globalInterval, self.subtitle)
+#                 self.refill.start()
 
     def initSubtitle(self):
         self.initProcess.show()
         self.subtitle.cellChanged.disconnect(self.subEdit)
         for x in range(self.subtitle.columnCount()):
             for y in range(self.subtitle.rowCount()):
-                self.subtitle.setSpan(y, x, 1, 1)
+                if self.subtitle.rowSpan(y, x) > 1:
+                    self.subtitle.setSpan(y, x, 1, 1)
         self.subtitle.setRowCount(self.duration // self.globalInterval + 1)
         for x in range(self.subtitle.columnCount()):
             for y in range(self.subtitle.rowCount()):
                 self.subtitle.setItem(y, x, QTableWidgetItem(''))
                 self.subtitle.item(y, x).setBackground(QBrush(QColor('#232629')))
-        self.subtitle.setVerticalHeaderLabels([cnt2Time2(i, self.globalInterval) for i in range(self.subtitle.rowCount())])
+        for t in self.autoSub:
+            start, end = t
+            startRow = start // self.globalInterval
+            endRow = end // self.globalInterval
+            if self.tablePreset[1]:
+                self.subtitle.setItem(startRow, 0, QTableWidgetItem(self.tablePreset[0]))
+                try:
+                    self.subtitle.item(startRow, 0).setBackground(QBrush(QColor('#35545d')))
+                except:
+                    pass
+                self.subtitle.setSpan(startRow, 0, endRow - startRow, 1)
+                if self.tablePreset[0]:
+                    self.subtitleDict[0][start] = [end - start, self.tablePreset[0]]
+            else:
+                for y in range(startRow, endRow):
+                    self.subtitle.setItem(y, 0, QTableWidgetItem(self.tablePreset[0]))
+                    try:
+                        self.subtitle.item(y, 0).setBackground(QBrush(QColor('#35545d')))
+                    except:
+                        pass
+                    if self.tablePreset[0]:
+                        self.subtitleDict[0][y * self.globalInterval] = [self.globalInterval, self.tablePreset[0]]
+        self.subtitle.setVerticalHeaderLabels(cnt2Time(self.subtitle.rowCount(), self.globalInterval))
         self.subtitle.cellChanged.connect(self.subEdit)
         self.initProcess.hide()
 
     def addSubtitle(self, index):
-        subtitlePath = QFileDialog.getOpenFileName(self, "请选择字幕", None, "字幕文件 (*.srt *.vtt *.ass *.ssa)")[0]
+        subtitlePath = QFileDialog.getOpenFileName(self, "请选择字幕", None, "字幕文件 (*.srt *.vtt *.ass)")[0]
         if subtitlePath:
-            self.initProcess.show()
-            self.subtitle.cellChanged.disconnect(self.subEdit)
-            if subtitlePath.endswith('.ass') or subtitlePath.endswith('.ssa'):
-                p = subprocess.Popen(['utils/ffmpeg.exe', '-y', '-i', subtitlePath, 'temp_sub.srt'])
-                p.wait()
-                subtitlePath = 'temp_sub.srt'
             subData = {}
-            with open(subtitlePath, 'r', encoding='utf-8') as f:
-                f = f.readlines()
-            subText = ''
-            YoutubeAutoSub = False
-            for l in f:
-                if '<c>' in l:
-                    YoutubeAutoSub = True
-                    break
-            for cnt, l in enumerate(f):
-                if '<c>' in l:
-                    lineData = l.split('c>')
-                    if len(lineData) > 3:
-                        subText, start, _ = lineData[0].split('<')
-                        start = calSubTime(start[:-1]) // self.globalInterval * self.globalInterval
-                        if start not in self.subtitleDict[index]:
-                            end = calSubTime(lineData[-3][1:-2]) // self.globalInterval * self.globalInterval
-                            for i in range(len(lineData) // 2):
-                                subText += lineData[i * 2 + 1][:-2]
-                            subData[start] = [end - start, subText]
-                    else:
-                        subText, start, _ = lineData[0].split('<')
-                        start = calSubTime(start[:-1]) // self.globalInterval * self.globalInterval
-                        if start not in self.subtitleDict[index]:
-                            subText += lineData[1][:-2]
-                            subData[start] = [self.globalInterval, subText]
-                elif '-->' in l and f[cnt + 2].strip() and '<c>' not in f[cnt + 2]:
-                    subText = f[cnt + 2][:-1]
-                    start = calSubTime(l[:12]) // self.globalInterval * self.globalInterval
-                    if start not in self.subtitleDict[index]:
-                        end = calSubTime(l[17:29]) // self.globalInterval * self.globalInterval
-                        subData[start] = [end - start, subText]
-                if '-->' in l and f[cnt + 1].strip() and not YoutubeAutoSub:
-                    start = calSubTime(l[:12]) // self.globalInterval * self.globalInterval
-                    if start not in self.subtitleDict[index]:
-                        end = calSubTime(l[17:29]) // self.globalInterval * self.globalInterval
-                        delta = end - start
-                        if delta > 10:
-                            if '<b>' in f[cnt + 1]:
-                                subData[start] = [delta, f[cnt + 1].split('<b>')[1].split('<')[0]]
-                            else:
-                                subData[start] = [delta, f[cnt + 1][:-1]]
-            self.subtitleDict[index].update(subData)
-            maxRow = 0
-            for _, v in self.subtitleDict.items():
-                startMax = max(v.keys())
-                rowCount = (startMax + v[startMax][0]) // self.globalInterval
-                if rowCount > maxRow:
-                    maxRow = rowCount
-            if maxRow < self.duration // self.globalInterval + 1:
-                maxRow = self.duration // self.globalInterval
+            if subtitlePath.endswith('.ass'):
+                self.assSelect.setDefault(subtitlePath, index)
+                self.assSelect.hide()
+                self.assSelect.show()
             else:
-                self.duration = maxRow * self.globalInterval
-            self.subtitle.setRowCount(maxRow)
-            self.subtitle.setVerticalHeaderLabels([cnt2Time2(i, self.globalInterval) for i in range(self.subtitle.rowCount())])
-            for start, rowData in subData.items():
-                startRow = start // self.globalInterval
-                endRow = startRow + rowData[0] // self.globalInterval
-                for row in range(startRow, endRow):
-                    self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
-                    self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
+                self.initProcess.show()
+                self.subtitle.cellChanged.disconnect(self.subEdit)
+                with open(subtitlePath, 'r', encoding='utf-8') as f:
+                    f = f.readlines()
+                subText = ''
+                YoutubeAutoSub = False
+                for l in f:
+                    if '<c>' in l:
+                        YoutubeAutoSub = True
+                        break
+                for cnt, l in enumerate(f):
+                    if '<c>' in l:
+                        lineData = l.split('c>')
+                        if len(lineData) > 3:
+                            subText, start, _ = lineData[0].split('<')
+                            start = calSubTime(start[:-1]) // 20 * 20
+                            if start not in self.subtitleDict[index]:
+                                end = calSubTime(lineData[-3][1:-2]) // 20 * 20
+                                for i in range(len(lineData) // 2):
+                                    subText += lineData[i * 2 + 1][:-2]
+                                subData[start] = [end - start, subText]
+                        else:
+                            subText, start, _ = lineData[0].split('<')
+                            start = calSubTime(start[:-1]) // 20 * 20
+                            if start not in self.subtitleDict[index]:
+                                subText += lineData[1][:-2]
+                                subData[start] = [self.globalInterval, subText]
+                    elif '-->' in l and f[cnt + 2].strip() and '<c>' not in f[cnt + 2]:
+                        subText = f[cnt + 2][:-1]
+                        start, end = l.strip().replace(' ', '').split('-->')
+                        start = calSubTime(start) // 20 * 20
+                        if start not in self.subtitleDict[index]:
+                            if 'al' in end:  # align
+                                end = end.split('al')[0]
+                            end = calSubTime(end) // 20 * 20
+                            subData[start] = [end - start, subText]
+                    if '-->' in l and f[cnt + 1].strip() and not YoutubeAutoSub:
+                        start, end = l.strip().replace(' ', '').split('-->')
+                        start = calSubTime(start) // 20 * 20
+                        if start not in self.subtitleDict[index]:
+                            end = calSubTime(end) // 20 * 20
+                            delta = end - start
+                            if delta > 10:
+                                if '<b>' in f[cnt + 1]:
+                                    subData[start] = [delta, f[cnt + 1].split('<b>')[1].split('<')[0]]
+                                else:
+                                    subData[start] = [delta, f[cnt + 1][:-1]]
+                self.subtitleDict[index].update(subData)
+                maxRow = 0
+                for _, v in self.subtitleDict.items():
+                    startMax = max(v.keys())
+                    rowCount = (startMax + v[startMax][0]) // self.globalInterval
+                    if rowCount > maxRow:
+                        maxRow = rowCount
+                if maxRow < self.duration // self.globalInterval + 1:
+                    maxRow = self.duration // self.globalInterval
+                else:
+                    self.duration = maxRow * self.globalInterval
+                self.subtitle.setRowCount(maxRow)
+#                 self.subtitle.setVerticalHeaderLabels([cnt2Time(i, self.globalInterval) for i in range(self.subtitle.rowCount())])
+                for start, rowData in subData.items():
+                    startRow = start // self.globalInterval
+                    endRow = startRow + rowData[0] // self.globalInterval
+                    for row in range(startRow, endRow):
+                        self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
+                        self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
+                    if endRow - startRow > 1:
+                        self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
+                self.subtitle.cellChanged.connect(self.subEdit)
+                self.initProcess.hide()
+
+    def addASSSub(self, assSummary):
+        index = assSummary[0]
+        assDict = assSummary[1]
+        self.initProcess.show()
+        self.subtitle.cellChanged.disconnect(self.subEdit)
+        self.videoDecoder.setSubDictStyle(assSummary)
+        subData = assDict['Events']
+        self.subtitleDict[index].update(subData)
+        maxRow = 0
+        for _, v in self.subtitleDict.items():
+            startMax = max(v.keys())
+            rowCount = (startMax + v[startMax][0]) // self.globalInterval
+            if rowCount > maxRow:
+                maxRow = rowCount
+        if maxRow < self.duration // self.globalInterval + 1:
+            maxRow = self.duration // self.globalInterval
+        else:
+            self.duration = maxRow * self.globalInterval
+        self.subtitle.setRowCount(maxRow)
+#         self.subtitle.setVerticalHeaderLabels([cnt2Time(i, self.globalInterval) for i in range(self.subtitle.rowCount())])
+        for start, rowData in subData.items():
+            startRow = start // self.globalInterval
+            endRow = startRow + rowData[0] // self.globalInterval
+            for row in range(startRow, endRow):
+                self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
+                self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
+            if endRow - startRow > 1:
                 self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
-            self.refreshComboBox()
-            self.subtitle.cellChanged.connect(self.subEdit)
-            self.initProcess.hide()
+        self.subtitle.cellChanged.connect(self.subEdit)
+        self.initProcess.hide()
 
     def subTimeOut(self):
         fontColor = self.previewSubtitle.fontColor
@@ -418,13 +501,15 @@ class MainWindow(QMainWindow):  # Main window
             position = index * self.globalInterval
             self.player.setPosition(position)
             self.videoSlider.setValue(position * 1000 // self.player.duration())
-            self.setTimeLabel()
+            self.setTimeLabel(position)
 
     def subEdit(self, row, index):
         repeat = self.subtitle.rowSpan(row, index)
-        self.setSubtitleDict(row, index, repeat, self.subtitle.item(row, index).text())
+        firstText = self.subtitle.item(row, index).text()
+        self.setSubtitleDict(row, index, repeat, firstText)
         self.subtitle.cellChanged.disconnect(self.subEdit)
         for cnt in range(repeat):
+            self.subtitle.setItem(row + cnt, index, QTableWidgetItem(firstText))
             if self.subtitle.item(row + cnt, index).text():
                 self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
             else:
@@ -432,16 +517,18 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.cellChanged.connect(self.subEdit)
 
     def setSubtitleDict(self, row, index, num, text):
-        self.subtitleDict[index][row * self.globalInterval] = [num * self.globalInterval, text]
+        if text:
+            self.subtitleDict[index][row * self.globalInterval] = [num * self.globalInterval, text]
 
     def popTableMenu(self, pos):
         self.subtitle.cellChanged.disconnect(self.subEdit)
         pos = QPoint(pos.x() + 55, pos.y() + 30)
         menu = QMenu()
-        copy = menu.addAction('复制')
-        paste = menu.addAction('粘贴')
         setSpan = menu.addAction('合并')
         clrSpan = menu.addAction('拆分')
+        copy = menu.addAction('复制')
+        paste = menu.addAction('粘贴')
+        delete = menu.addAction('删除')
         addSub = menu.addAction('导入字幕')
         cutSub = menu.addAction('裁剪字幕')
         action = menu.exec_(self.subtitle.mapToGlobal(pos))
@@ -460,12 +547,25 @@ class MainWindow(QMainWindow):  # Main window
                         self.clipBoard.append('')
                 break
         elif action == paste:
-            self.subtitle.cellChanged.connect(self.subEdit)
             for x in xSet:
                 for cnt, text in enumerate(self.clipBoard):
+                    self.subtitle.setSpan(yList[0] + cnt, x, 1, 1)
                     self.subtitle.setItem(yList[0] + cnt, x, QTableWidgetItem(text))
-                    self.subtitleDict[x][(yList[0] + cnt) * self.globalInterval] = [self.globalInterval, text]
-            self.subtitle.cellChanged.disconnect(self.subEdit)
+                    if text:
+                        self.subtitle.item(yList[0] + cnt, x).setBackground(QBrush(QColor('#35545d')))
+                        self.subtitleDict[x][(yList[0] + cnt) * self.globalInterval] = [self.globalInterval, text]
+                    else:
+                        self.subtitle.item(yList[0] + cnt, x).setBackground(QBrush(QColor('#232629')))
+        elif action == delete:
+            for x in xSet:
+                for y in range(yList[0], yList[1] + 1):
+                    if self.subtitle.item(y, x):
+                        self.subtitle.setSpan(y, x, 1, 1)
+                        if self.subtitle.item(y, x).text():
+                            self.subtitle.setItem(y, x, QTableWidgetItem(''))
+                            self.subtitle.item(y, x).setBackground(QBrush(QColor('#232629')))
+                        if y * self.globalInterval in self.subtitleDict[x]:
+                            del self.subtitleDict[x][y * self.globalInterval]
         elif action == setSpan:
             for x in xSet:
                 if not self.subtitle.item(yList[0], x):
@@ -473,7 +573,8 @@ class MainWindow(QMainWindow):  # Main window
                 else:
                     firstItem = self.subtitle.item(yList[0], x).text()
                 for y in range(yList[0], yList[1] + 1):
-                    self.subtitle.setSpan(y, x, 1, 1)
+                    if self.subtitle.rowSpan(y, x) > 1:
+                        self.subtitle.setSpan(y, x, 1, 1)
                     self.subtitle.setItem(y, x, QTableWidgetItem(firstItem))
                     self.subtitle.item(y, x).setBackground(QBrush(QColor('#35545d')))
                     if y * self.globalInterval in self.subtitleDict[x]:
@@ -483,23 +584,15 @@ class MainWindow(QMainWindow):  # Main window
             self.setSubtitleDict(yList[0], x, yList[1] - yList[0] + 1, firstItem)
         elif action == clrSpan:
             for x in xSet:
-                if not self.subtitle.item(yList[0], x):
-                    firstItem = ''
-                else:
-                    firstItem = self.subtitle.item(yList[0], x).text()
                 for cnt, y in enumerate(range(yList[0], yList[1] + 1)):
-                    self.subtitle.setSpan(y, x, 1, 1)
-                    if not cnt:
-                        self.subtitle.setItem(yList[0], x, QTableWidgetItem(firstItem))
-                        if firstItem:
-                            self.subtitle.item(y, x).setBackground(QBrush(QColor('#35545d')))
-                        else:
-                            self.subtitle.item(y, x).setBackground(QBrush(QColor('#232629')))
-                    else:
-                        self.subtitle.setItem(y, x, QTableWidgetItem(''))
-                        self.subtitle.item(y, x).setBackground(QBrush(QColor('#232629')))
-                    self.setSubtitleDict(yList[0], x, yList[1] - yList[0] + 1, firstItem)
-                break
+                    repeat = self.subtitle.rowSpan(y, x)
+                    if repeat > 1:
+                        self.subtitle.setSpan(y, x, 1, 1)
+                        for repeatY in range(repeat):
+                            newY = y + repeatY
+                            if self.subtitle.item(newY, x):
+                                if self.subtitle.item(newY, x).text():
+                                    self.subtitleDict[x][newY * self.globalInterval] = [self.globalInterval, self.subtitle.item(newY, x).text()]
         elif action == addSub:
             self.subtitle.cellChanged.connect(self.subEdit)
             for x in xSet:
@@ -536,6 +629,8 @@ class MainWindow(QMainWindow):  # Main window
         self.volumeMuteIcon = self.style().standardIcon(QStyle.SP_MediaVolumeMuted)
         self.volumeAction = toolBar.addAction(self.volumeIcon, '静音')
         self.volumeAction.triggered.connect(self.volumeMute)
+        separateAction = QAction(QIcon.fromTheme('document-open'), '&AI自动打轴', self, triggered=self.popSeparate)
+        playMenu.addAction(separateAction)
         previewAction = QAction(QIcon.fromTheme('document-open'), '&设置预览字幕', self, triggered=self.popPreview)
         playMenu.addAction(previewAction)
 
@@ -580,13 +675,14 @@ class MainWindow(QMainWindow):  # Main window
 
         toolBar.addWidget(QLabel('   '))
         self.globalIntervalComBox = QComboBox()
-        self.globalIntervalComBox.addItems(['间隔 100ms', '间隔 200ms', '间隔 500ms', '间隔 1s'])
-        self.globalIntervalComBox.setCurrentIndex(1)
+        self.globalIntervalComBox.addItems(['间隔 20ms', '间隔 50ms', '间隔 100ms', '间隔 200ms', '间隔 500ms', '间隔 1s'])
+        self.globalIntervalComBox.setCurrentIndex(3)
         self.globalIntervalComBox.currentIndexChanged.connect(self.setGlobalInterval)
         toolBar.addWidget(self.globalIntervalComBox)
         toolBar.addWidget(QLabel('  '))
         self.subEditComBox = QComboBox()
-        self.refreshComboBox()
+        for i in range(self.subtitle.columnCount()):
+            self.subEditComBox.addItem('字幕 ' + str(i + 1))
         toolBar.addWidget(self.subEditComBox)
         toolBar.addWidget(QLabel('  '))
         moveForward = QPushButton('- 1')
@@ -612,30 +708,37 @@ class MainWindow(QMainWindow):  # Main window
     def setGlobalInterval(self, index):
         if not self.playStatus:
             self.mediaPlay()
-        self.globalInterval = {0: 100, 1: 200, 2: 500, 3: 1000}[index]
-        self.initSubtitle()
+        oldInterval = self.globalInterval
+        self.globalInterval = {0: 20, 1: 50, 2: 100, 3: 400, 4: 500, 5: 1000}[index]
+        self.timer.setInterval(self.globalInterval)
+        self.subTimer.setInterval(self.globalInterval)
+        self.refill.setGlobalInterval(self.globalInterval)
+#         self.initSubtitle()
+#         row = self.player.position() // self.globalInterval
+#         self.subtitle.selectRow(row)
+#         self.subtitle.verticalScrollBar().setValue(row - 10)
         self.initProcess.show()
-        self.subtitle.cellChanged.disconnect(self.subEdit)
-        for index, subData in self.subtitleDict.items():
-            for start, rowData in subData.items():
-                startRow = start // self.globalInterval
-                deltaRow = rowData[0] // self.globalInterval
-                if deltaRow:
-                    endRow = startRow + deltaRow
-                    for row in range(startRow, endRow):
-                        self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
-                        if row >= 0:
-                            self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
-                    self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
-        self.subtitle.cellChanged.connect(self.subEdit)
+        try:
+            self.subtitle.cellChanged.disconnect(self.subEdit)
+        except:
+            pass
+        self.asyncTable = asyncTable(self.subtitleDict, oldInterval, self.globalInterval,\
+                                     self.duration, self.subtitle, self.autoSub, self.tablePreset, self.player.position())
+        self.asyncTable.reconnect.connect(self.reconnectCell)
+        self.asyncTable.start()
+#         self.subtitle.cellChanged.connect(self.subEdit)
         self.initProcess.hide()
+
+    def reconnectCell(self):
+        self.subtitle.cellChanged.connect(self.subEdit)
 
     def moveForward(self):
         self.initProcess.show()
         self.subtitle.cellChanged.disconnect(self.subEdit)
         index = self.subEditComBox.currentIndex()
         for y in range(self.subtitle.rowCount()):
-            self.subtitle.setSpan(y, index, 1, 1)
+            if self.subtitle.rowSpan(y, index) > 1:
+                self.subtitle.setSpan(y, index, 1, 1)
             self.subtitle.setItem(y, index, QTableWidgetItem(''))
             self.subtitle.item(y, index).setBackground(QBrush(QColor('#232629')))
         tmpDict = self.subtitleDict[index]
@@ -647,8 +750,12 @@ class MainWindow(QMainWindow):  # Main window
             endRow = startRow + rowData[0] // self.globalInterval
             for row in range(startRow, endRow):
                 self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
-                self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
-            self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
+                try:
+                    self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
+                except:
+                    pass
+            if endRow - startRow > 1:
+                self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
         self.subtitle.cellChanged.connect(self.subEdit)
         self.initProcess.hide()
 
@@ -657,7 +764,8 @@ class MainWindow(QMainWindow):  # Main window
         self.subtitle.cellChanged.disconnect(self.subEdit)
         index = self.subEditComBox.currentIndex()
         for y in range(self.subtitle.rowCount()):
-            self.subtitle.setSpan(y, index, 1, 1)
+            if self.subtitle.rowSpan(y, index) > 1:
+                self.subtitle.setSpan(y, index, 1, 1)
             self.subtitle.setItem(y, index, QTableWidgetItem(''))
             self.subtitle.item(y, index).setBackground(QBrush(QColor('#232629')))
         tmpDict = self.subtitleDict[index]
@@ -669,20 +777,27 @@ class MainWindow(QMainWindow):  # Main window
             endRow = startRow + rowData[0] // self.globalInterval
             for row in range(startRow, endRow):
                 self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
-                self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
-            self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
+                try:
+                    self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
+                except:
+                    pass
+            if endRow - startRow > 1:
+                self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
         self.subtitle.cellChanged.connect(self.subEdit)
         self.initProcess.hide()
 
     def clearSub(self):
         index = self.subEditComBox.currentIndex()
+        if not index:
+            self.clearAutoSub()
         reply = QMessageBox.information(self, '清空字幕', '清空第 %s 列字幕条？' % (index + 1), QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             self.initProcess.show()
             self.subtitle.cellChanged.disconnect(self.subEdit)
             self.subtitleDict[index] = {0: [self.globalInterval, '']}
             for i in range(self.subtitle.rowCount()):
-                self.subtitle.setSpan(i, index, 1, 1)
+                if self.subtitle.rowSpan(i, index) > 1:
+                    self.subtitle.setSpan(i, index, 1, 1)
                 self.subtitle.setItem(i, index, QTableWidgetItem(''))
                 self.subtitle.item(i, index).setBackground(QBrush(QColor('#232629')))
                 self.subtitle.setHorizontalHeaderItem(index, QTableWidgetItem('%s' % (index + 1)))
@@ -722,34 +837,34 @@ class MainWindow(QMainWindow):  # Main window
         QMessageBox.information(self, '导出字幕', '导出完成', QMessageBox.Yes)
         self.exportWindow.hide()
 
-    def refreshComboBox(self):
-        self.subEditComBox.clear()
-        for i in range(self.subtitle.columnCount()):
-            self.subEditComBox.addItem('字幕 ' + str(i + 1))
-
     def open(self):
         self.videoPath = QFileDialog.getOpenFileName(self, "请选择视频文件", None, "MP4格式 (*.mp4);;所有文件(*.*)")[0]
         if self.videoPath:
             cmd = ['utils/ffmpeg.exe', '-i', self.videoPath]
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             p.wait()
-            for l in p.stdout.readlines():
-                l = l.decode('utf8')
-                if 'Duration' in l:
-                    self.duration = calSubTime(l.split(' ')[3][:-1])
-                if 'Stream' in l and 'DAR' in l:
-                    self.videoWidth, self.videoHeight = map(int, l.split(' [')[0].split(' ')[-1].split('x'))
-                    args = l.split(',')
-                    for cnt, arg in enumerate(args):
-                        if 'kb' in arg:
-                            self.bitrate = int(arg.split('kb')[0])
-                            self.fps = int(args[cnt + 1].split('fps')[0])
-                            break
-                    break
+            try:
+                for l in p.stdout.readlines():
+                    l = l.decode('utf8')
+                    if 'Duration' in l:
+                        self.duration = calSubTime(l.split(' ')[3][:-1])
+                        self.bitrate = int(l.split(' ')[-2])
+                    if 'Stream' in l and 'DAR' in l:
+                        args = l.split(',')
+                        resolution = args[2].replace(' ', '')
+                        if '[' in resolution:
+                            resolution = resolution.split('[')[0]
+                        self.videoWidth, self.videoHeight = map(int, resolution.split('x'))
+                        for arg in args:
+                            if 'fps' in arg:
+                                self.fps = float(arg.split('fps')[0])
+                        break
+            except:
+                pass
             self.initProcess.show()
             self.subtitle.cellChanged.disconnect(self.subEdit)
             self.subtitle.setRowCount(self.duration // self.globalInterval + 1)
-            self.subtitle.setVerticalHeaderLabels([cnt2Time2(i, self.globalInterval) for i in range(self.subtitle.rowCount())])
+            self.subtitle.setVerticalHeaderLabels(cnt2Time(self.subtitle.rowCount(), self.globalInterval))
             self.subtitle.cellChanged.connect(self.subEdit)
             self.initProcess.hide()
             url = QUrl.fromLocalFile(self.videoPath)
@@ -763,6 +878,7 @@ class MainWindow(QMainWindow):  # Main window
             self.timer.timeout.connect(self.timeOut)
             self.subTimer.start()
             self.subTimer.timeout.connect(self.subTimeOut)
+            self.autoSub = dict()
 
     def popDnld(self):
         self.releaseKeyboard()
@@ -773,6 +889,45 @@ class MainWindow(QMainWindow):  # Main window
         self.releaseKeyboard()
         self.previewSubtitle.hide()
         self.previewSubtitle.show()
+
+    def popSeparate(self):
+        self.releaseKeyboard()
+        self.separate.setDefault(self.videoPath, self.duration)
+        self.separate.hide()
+        self.separate.show()
+
+    def setTablePreset(self, preset):
+        self.tablePreset = preset
+
+    def setAutoSubtitle(self, voiceList):
+        self.subtitle.cellChanged.disconnect(self.subEdit)
+        for t in voiceList:
+            self.autoSub.append(t)
+            start, end = t
+            startRow = start // self.globalInterval
+            endRow = end // self.globalInterval
+            if self.tablePreset[1]:
+                self.subtitle.setItem(startRow, 0, QTableWidgetItem(self.tablePreset[0]))
+                try:
+                    self.subtitle.item(startRow, 0).setBackground(QBrush(QColor('#35545d')))
+                except:
+                    pass
+                self.subtitle.setSpan(startRow, 0, endRow - startRow, 1)
+                if self.tablePreset[0]:
+                    self.subtitleDict[0][start] = [end - start, self.tablePreset[0]]
+            else:
+                for y in range(startRow, endRow):
+                    self.subtitle.setItem(y, 0, QTableWidgetItem(self.tablePreset[0]))
+                    try:
+                        self.subtitle.item(y, 0).setBackground(QBrush(QColor('#35545d')))
+                    except:
+                        pass
+                    if self.tablePreset[0]:
+                        self.subtitleDict[0][y * self.globalInterval] = [self.globalInterval, self.tablePreset[0]]
+        self.subtitle.cellChanged.connect(self.subEdit)
+
+    def clearAutoSub(self):
+        self.autoSub = []
 
     def decode(self):
         self.releaseKeyboard()
@@ -798,7 +953,7 @@ class MainWindow(QMainWindow):  # Main window
     def mediaPlayOnly(self):
         self.grabKeyboard()
         try:
-            timeText = self.videoPositionEdit.text().split(':')
+            timeText = self.videoPositionEdit.text().replace('：', ':').split(':')
             m, s = timeText[:2]
             if not m:
                 m = '00'
@@ -808,10 +963,8 @@ class MainWindow(QMainWindow):  # Main window
                 m = m[:3]
             if len(s) > 2:
                 s = s[:2]
-            if m.isdigit():
-                m = int(m)
-            if s.isdigit():
-                s = int(s)
+            m = int(m)
+            s = int(s)
             if s > 60:
                 s = 60
             total_m = self.player.duration() // 60000
@@ -822,7 +975,7 @@ class MainWindow(QMainWindow):  # Main window
         except:
             pass
         self.videoPositionEdit.setReadOnly(True)
-        self.timeStart()
+#         self.timeStart()
 
     def mediaPauseOnly(self):
         self.releaseKeyboard()
@@ -896,11 +1049,12 @@ class MainWindow(QMainWindow):  # Main window
             self.volSlider.setValue(self.old_volumeValue)
             self.volumeAction.setIcon(self.volumeIcon)
 
-    def setTimeLabel(self):
-        now = self.player.position()
-        total = self.player.duration()
-        now = self.splitTime(now)
-        total = self.splitTime(total)
+    def setTimeLabel(self, pos=0):
+        if not pos:
+            now = self.splitTime(self.player.position())
+        else:
+            now = self.splitTime(pos)
+        total = self.splitTime(self.player.duration())
         self.videoPositionEdit.setText(now)
         self.videoPositionLabel.setText(' / %s  ' % total)
 

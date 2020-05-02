@@ -6,7 +6,7 @@ import time
 import shutil
 import subprocess
 from PySide2.QtWidgets import QGridLayout, QFileDialog, QDialog, QPushButton,\
-        QLineEdit, QTableWidget, QTableWidgetItem, QCheckBox, QProgressBar, QLabel
+        QLineEdit, QTableWidget, QTableWidgetItem, QProgressBar, QLabel
 from PySide2.QtCore import QTimer, Signal, QThread
 
 
@@ -279,8 +279,8 @@ class YoutubeDnld(QDialog):
                     resolution.append(self.videoInfo.item(y, 2).text())
                     break
         savePath = self.savePath.text()
-        ja = self.jaCheck.isChecked()
-        zh = self.zhCheck.isChecked()
+        ja = self.jaCheckStatus
+        zh = self.zhCheckStatus
         if ja and zh:
             args = ['--write-auto-sub', '--sub-lang', 'ja,zh-Hans']
         elif ja and not zh:
@@ -289,7 +289,7 @@ class YoutubeDnld(QDialog):
             args = ['--write-auto-sub', '--sub-lang', 'zh-Hans']
         else:
             args = []
-        if self.thumbnailCheck.isChecked():
+        if self.thumbnailCheckStatus:
             args.append('--write-thumbnail')
         self.dnldThread = dnldThread(dnldNum, videoType, resolution, savePath, self.title, args, self.url)
         self.dnldThread.downloading.connect(self.dnldName)
