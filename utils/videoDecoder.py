@@ -6,7 +6,7 @@ from PySide2.QtCore import Qt, QTimer, Signal, QThread, QPoint
 from PySide2.QtGui import QFontInfo, QPixmap, QIntValidator
 
 
-def ms2Time(ms):
+def ms2ASSTime(ms):
     '''
     receive int
     return str
@@ -15,10 +15,8 @@ def ms2Time(ms):
     h, m = divmod(ms, 3600000)
     m, s = divmod(m, 60000)
     s, ms = divmod(s, 1000)
-    m = ('0%s' % m)[-2:]
-    s = ('0%s' % s)[-2:]
-    ms = ('%s0' % ms)[:2]
-    return '%s:%s:%s.%s' % (h, m, s, ms)
+    ms = ('%03d' % ms)[:2]
+    return '%s:%02d:%02d.%s' % (h, m, s, ms)
 
 
 def calSubTime(t):
@@ -755,16 +753,16 @@ class VideoDecoder(QDialog):
                                 karaY = self.karaokDict[subNumber][3]
                                 if self.layerCheckStatus:
                                     line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,{\\K%s\\move(%s,%s,%s,%s)\\fad(500,500)}%s\n' % \
-                                    (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
+                                    (ms2ASSTime(start), ms2ASSTime(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
                                 else:
                                     line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,{\\K%s\\move(%s,%s,%s,%s)\\fad(500,500)}%s\n' % \
-                                    (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
+                                    (subNumber, ms2ASSTime(start), ms2ASSTime(start + subData[0]), 'Subtitle_%s' % num, num, subData[0] // 10 - 100, karaX, karaY, karaX + 100, karaY, subData[1])
                                 ass.write(line)
                             else:
                                 if self.layerCheckStatus:
-                                    line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,%s\n' % (ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                                    line = 'Dialogue: 0,%s,%s,%s,#%s,0,0,0,,%s\n' % (ms2ASSTime(start), ms2ASSTime(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
                                 else:
-                                    line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,%s\n' % (subNumber, ms2Time(start), ms2Time(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
+                                    line = 'Dialogue: %s,%s,%s,%s,#%s,0,0,0,,%s\n' % (subNumber, ms2ASSTime(start), ms2ASSTime(start + subData[0]), 'Subtitle_%s' % num, num, subData[1])
                                 ass.write(line)
             else:
                 for subNumber in self.subtitleArgs:

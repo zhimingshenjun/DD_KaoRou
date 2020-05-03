@@ -69,7 +69,7 @@ class separateQThread(QThread):
                 avgVarList.append(np.mean(varList[varCnt:varCnt + 5]))  # 方差值+后四位一起取平均
             avgVarList += varList[-4:]  # 补上最后四个没计算的方差值
             while cnt < len(avgVarList) - self.afterCnt:  # 开始判断人声区域
-                if avgVarList[cnt] >= med:  # 平均方差值超过1分钟内方差中位数
+                if avgVarList[cnt] >= med and avgVarList[cnt] >= 0.0001:  # 平均方差值超过1分钟内方差中位数
                     start = cut * 60000 + (cnt - self.beforeCnt) * 20  # 开始时间为当前时间-用户前侧留白时间
                     cnt += self.afterCnt  # 向后延伸用户后侧留白时间
                     if cnt < len(avgVarList):  # 没超出一分钟则开始往后查询
@@ -84,7 +84,7 @@ class separateQThread(QThread):
                             except:
                                 break
                     end = cut * 60000 + cnt * 20  # 结束时间即结束向后查询的时间
-                    voiceList.append([start, end])  # 添加起止时间给信号槽发送
+                    voiceList.append([start, end - start])  # 添加起止时间给信号槽发送
                 else:
                     cnt += 1  # 没检测到人声则+1
             self.position.emit(cut + 1)

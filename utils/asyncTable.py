@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-import time
+import time, copy
 from PySide2.QtWidgets import QWidget, QMainWindow, QGridLayout, QFileDialog, QToolBar,\
         QAction, QDialog, QStyle, QSlider, QLabel, QPushButton, QStackedWidget, QHBoxLayout,\
         QLineEdit, QTableWidget, QAbstractItemView, QTableWidgetItem, QGraphicsTextItem, QMenu,\
@@ -39,29 +39,30 @@ class refillVerticalLabel(QThread):
 
     def run(self):
         while 1:
-            scrollValue = self.subtitle.verticalScrollBar().value()
-            if scrollValue != self.oldInterval:
-                print(scrollValue)
-                self.oldInterval = scrollValue
-                refillToken = False
-                for y in range(scrollValue - 1, scrollValue + 60):
-                    if not self.subtitle.verticalHeaderItem(y):
-                        refillToken = True
-                        break
-                if refillToken:
-                    for cnt, label in enumerate(cnt2Time(60, self.globalInterval, self.value)):
-                        self.subtitle.setVerticalHeaderItem(self.value + cnt, QTableWidgetItem(label))
-                        time.sleep(0.000001)
-            time.sleep(20)
+            try:
+                scrollValue = self.subtitle.verticalScrollBar().value()
+                if scrollValue != self.oldInterval or scrollValue == 0:
+                    self.oldInterval = scrollValue
+                    refillToken = False
+                    for y in range(scrollValue - 3, scrollValue + 47):
+                        if not self.subtitle.verticalHeaderItem(y):
+                            refillToken = True
+                            break
+                    if refillToken:
+                        for cnt, label in enumerate(cnt2Time(50, self.globalInterval, y)):
+                            self.subtitle.setVerticalHeaderItem(y + cnt, QTableWidgetItem(label))
+                            time.sleep(0.000001)
+            except:
+                pass
+            time.sleep(0.01)
     
 
 class asyncTable(QThread):
     reconnect = Signal()
 
-    def __init__(self, subtitleDict, oldInterval, globalInterval, duration, subtitle, autoSub, tablePreset, position, parent=None):
+    def __init__(self, subtitleDict, globalInterval, duration, subtitle, autoSub, tablePreset, position=0, parent=None):
         super(asyncTable, self).__init__(parent)
-        self.subtitleDict = subtitleDict
-        self.oldInterval = oldInterval
+        self.subtitleDict = copy.deepcopy(subtitleDict)
         self.globalInterval = globalInterval
         self.duration = duration
         self.subtitle = subtitle
@@ -70,47 +71,37 @@ class asyncTable(QThread):
         self.position = position
 
     def initSubtitle(self):
-#         for index, subData in self.subtitleDict.items():
-#             for start, rowData in subData.items():
-#                 if start >= 0:
-#                     startRow = start // self.oldInterval
-#                     deltaRow = rowData[0] // self.oldInterval
-#                     for y in range(startRow, startRow + deltaRow + 1):
-#                         self.subtitle.setItem(y, index, QTableWidgetItem(''))
-#                         self.subtitle.item(y, index).setBackground(QBrush(QColor('#232629')))  # 全部填黑
-#                         if self.subtitle.rowspan(y, index) > 1:
-#                             self.subtitle.setSpan(y, index, 1, 1)
-        self.subtitle.clear()
+#         for x in range(5):
+#             for y in range(self.subtitle.rowCount()):
+#                 if self.subtitle.rowSpan(y, x) > 1:
+#                     self.subtitle.setSpan(y, x, 1, 1)
+#                 self.subtitle.setItem(y, x, QTableWidgetItem(''))
+#                 self.subtitle.item(y, x).setBackground(QBrush(QColor('#232629')))
+#                 time.sleep(0.0001)
+        self.subtitle.clearSpans()
+        self.subtitle.clear()  # 这两个清空命令 辣鸡！辣鸡！辣鸡！格子多了一调用就崩溃！
         self.subtitle.setRowCount(self.duration // self.globalInterval + 1)  # 重置表格行数
-        for t in self.autoSub:  # 重新标记AI识别位置
-            start, end = t
-            startRow = start // self.globalInterval
-            endRow = end // self.globalInterval
-            if self.tablePreset[1]:
-                self.subtitle.setItem(startRow, 0, QTableWidgetItem(self.tablePreset[0]))
-                try:
-                    self.subtitle.item(startRow, 0).setBackground(QBrush(QColor('#35545d')))
-                except:
-                    pass
-                self.subtitle.setSpan(startRow, 0, endRow - startRow, 1)
-                if self.tablePreset[0]:
-                    self.subtitleDict[0][start] = [end - start, self.tablePreset[0]]
-            else:
-                for y in range(startRow, endRow):
-                    self.subtitle.setItem(y, 0, QTableWidgetItem(self.tablePreset[0]))
-                    try:
-                        self.subtitle.item(y, 0).setBackground(QBrush(QColor('#35545d')))
-                    except:
-                        pass
-                    if self.tablePreset[0]:
-                        self.subtitleDict[0][y * self.globalInterval] = [self.globalInterval, self.tablePreset[0]]
-        scrollValue = self.subtitle.verticalScrollBar().value() - 1
-        for cnt, label in enumerate(cnt2Time(60, self.globalInterval, scrollValue)):
-            self.subtitle.setVerticalHeaderItem(scrollValue + cnt, QTableWidgetItem(label))
-            time.sleep(0.000001)
-#         for cnt, label in enumerate(cnt2Time(200, self.globalInterval)):  # 只画前200个 其余的行号随用户拖动条动态生成
-#             self.subtitle.setVerticalHeaderItem(cnt, QTableWidgetItem(label))
-#             time.sleep(0.000000001)
+
+#         for t in self.autoSub:  # 重新标记AI识别位置
+#             start, delta = t
+#             startRow = start // self.globalInterval
+#             endRow = startRow + delta // self.globalInterval
+#             if self.tablePreset[1]:
+#                 for y in range(startRow, endRow):
+#                     self.subtitle.setItem(y, 0, QTableWidgetItem(self.tablePreset[0]))
+#                 try:
+#                     self.subtitle.item(startRow, 0).setBackground(QBrush(QColor('#35545d')))
+#                 except:
+#                     pass
+#                 self.subtitle.setSpan(startRow, 0, endRow - startRow, 1)
+#                 if self.tablePreset[0]:
+#                     self.subtitleDict[0][start] = [delta, self.tablePreset[0]]
+#             else:
+#                 for y in range(startRow, endRow):
+#                     self.subtitle.setItem(y, 0, QTableWidgetItem(self.tablePreset[0]))
+#                     self.subtitle.item(y, 0).setBackground(QBrush(QColor('#35545d')))
+#                     if self.tablePreset[0]:
+#                         self.subtitleDict[0][y * self.globalInterval] = [self.globalInterval, self.tablePreset[0]]
 
     def run(self):
         self.initSubtitle()
@@ -119,13 +110,16 @@ class asyncTable(QThread):
                 startRow = start // self.globalInterval
                 deltaRow = rowData[0] // self.globalInterval
                 if deltaRow:
-                    endRow = startRow + deltaRow
-                    for row in range(startRow, endRow):
-                        self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
+                    for row in range(startRow, startRow + deltaRow):
                         if row >= 0:
-                            self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
-                    if endRow - startRow > 1:
-                        self.subtitle.setSpan(startRow, index, endRow - startRow, 1)
+                            try:
+                                self.subtitle.setItem(row, index, QTableWidgetItem(rowData[1]))
+                                self.subtitle.item(row, index).setBackground(QBrush(QColor('#35545d')))
+                            except:
+                                pass
+                    if deltaRow > 1:
+                        self.subtitle.setSpan(startRow, index, deltaRow, 1)
+        time.sleep(0.015)
         row = self.position // self.globalInterval
         self.subtitle.selectRow(row)
         self.subtitle.verticalScrollBar().setValue(row - 10)
