@@ -12,19 +12,6 @@ from PySide2.QtGui import QIcon, QKeySequence, QFont, QBrush, QColor
 from PySide2.QtCore import Qt, QTimer, QEvent, QPoint, Signal, QSizeF, QUrl
 
 
-# def calSubTime(t):
-#     '''
-#     receive str
-#     return int
-#     h:m:s.ms -> ms in total
-#     '''
-#     h = int(t[:2])
-#     m = int(t[3:5])
-#     s = int(t[6:8])
-#     t = t.replace(',', '.')
-#     ms = int(('%s00' % t.split('.')[-1])[:3])
-#     return h * 3600000 + m * 60000 + s * 1000 + ms
-
 def calSubTime(t):
     '''
     receive str
@@ -152,8 +139,8 @@ class assSelect(QDialog):
                     self.subDict[styleName][_format] = style[cnt]
             for line in events:
                 if styleName == line[Style]:
-                    start = calSubTime(line[Start])
-                    delta = calSubTime(line[End]) - start
+                    start = calSubTime(line[Start]) // 20 * 20
+                    delta = calSubTime(line[End]) - start // 20 * 20
                     self.subDict[styleName]['Tableview'].append([line[Start], line[End], line[Text]])
                     self.subDict[styleName]['Events'][start] = [delta, line[Text]]
 

@@ -1,10 +1,8 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-import psutil
-import subprocess
+import os, subprocess, wave, time
 import numpy as np
-# from matplotlib import pyplot as plt
 from spleeter.separator import Separator
 from spleeter.audio.adapter import get_default_audio_adapter
 from PySide2.QtWidgets import QGridLayout, QDialog, QPushButton, QProgressBar, QLabel, QComboBox,\
@@ -13,11 +11,50 @@ from PySide2.QtCore import QTimer, Signal, QThread
 from PySide2.QtGui import QIntValidator
 
 
+def getWave(audioPath):
+    f = wave.open(audioPath, 'rb')  # 开始分析波形
+    params = f.getparams()
+    nchannels, _, framerate, nframes = params[:4]
+    strData = f.readframes(nframes)
+    f.close()
+    w = np.fromstring(strData, dtype=np.int16)
+    w = np.reshape(w, [nframes, nchannels])
+    _time = [x * 1000 / framerate for x in range(0, nframes)]
+    return _time, list(w[:, 0])
+
+
+class sepMainAudio(QThread):
+    mainAudioWave = Signal(list, list)
+
+    def __init__(self, videoPath, duration):
+        super().__init__()
+        self.videoPath = videoPath
+        self.duration = duration
+
+    def run(self):
+        if os.path.exists('temp_audio'):  # 创建和清空temp_audio文件夹
+            try:
+                for i in os.listdir('temp_audio'):
+                    os.remove(r'temp_audio\%s' % i)
+            except:
+                pass
+        else:
+            os.mkdir('temp_audio')
+        timeStamp = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime(time.time()))
+        wavePath = r'temp_audio\main_audio_%s.wav' % timeStamp
+        cmd = ['utils/ffmpeg.exe', '-y', '-i', self.videoPath, '-vn', '-ar', '1000', wavePath]
+        p = subprocess.Popen(cmd)
+        p.wait()
+        _time, _wave = getWave(wavePath)
+        self.mainAudioWave.emit(_time, _wave)  # 发送主音频波形
+        os.remove(wavePath)  # 删除wav文件  太大了
+
+
 class separateQThread(QThread):
     position = Signal(int)
     percent = Signal(float)
     voiceList = Signal(list)
-    avgList = Signal(list)
+    voiceWave = Signal(list, list)
     finish = Signal(bool)
 
     def __init__(self, videoPath, duration, before, after, multiThread, parent=None):
@@ -32,7 +69,8 @@ class separateQThread(QThread):
     def run(self):
         cuts = self.duration // 60000 + 1
         for cut in range(cuts):
-            cmd = ['utils/ffmpeg.exe', '-y', '-i', self.videoPath, '-vn', '-ss', str(cut * 60), '-t', '60', 'temp_audio.m4a']
+            audioPath = 'temp_audio.m4a'
+            cmd = ['utils/ffmpeg.exe', '-y', '-i', self.videoPath, '-vn', '-ss', str(cut * 60), '-t', '60', audioPath]
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             p.wait()
             for line in p.stdout.readlines():
@@ -42,23 +80,34 @@ class separateQThread(QThread):
                         break
                 except:
                     pass
-            for hz in line.split(','):
-                if 'Hz' in hz:
-                    hz = int(hz.split('Hz')[0])
-                    break
-            hz20 = hz // 50  # 20ms
-            waveform, _ = self.audioLoader.load('temp_audio.m4a')
-            prediction = self.separate.separate(waveform)
+            try:
+                line = line.lower()
+                for hz in line.split(','):
+                    if 'hz' in hz:
+                        hz = int(hz.split('hz')[0])
+                        break
+            except:
+                hz = 44100
+            self.separate.separate_to_file(audioPath, '.\\', codec='wav', bitrate='1k')  # 分离人声音轨
+            wavePath = r'temp_audio\vocals_%s.wav' % cut
+            cmd = ['utils/ffmpeg.exe', '-y', '-i', r'temp_audio\vocals.wav', '-vn', '-ar', '1000', wavePath]  # 用ffmpeg再降一次采样
+            p = subprocess.Popen(cmd)
+            p.wait()
+            _time, _wave = getWave(wavePath)  # 发送人声波形
+            self.voiceWave.emit(_time, _wave)
+
+            # AI识别部分
+            waveform, _ = self.audioLoader.load(audioPath, sample_rate=hz)  # 加载音频
+            prediction = self.separate.separate(waveform)  # 核心部分 调用spleeter分离音频
             msList = []
             varList = []
             voiceList = []
-            avgList = []
+            hz20 = hz // 50  # 20ms
             for cnt, l in enumerate(prediction['vocals']):  # 只提取人声键值
                 for i in l:
                     msList.append(i)
                 if not cnt % hz20:  # 每20ms取一次方差
                     varList.append(np.var(msList))  # 每20ms内的方差值
-                    avgList.append(np.mean(msList))  # 每20ms内的平均值
                     msList = []
             med = np.median(varList)  # 1分钟内所有方差中位数
             cnt = self.beforeCnt  # 用户设置打轴前侧预留时间  / 20ms的次数
@@ -90,31 +139,6 @@ class separateQThread(QThread):
             self.position.emit(cut + 1)
             self.percent.emit((cut + 1) / cuts * 100)
             self.voiceList.emit(voiceList)
-            self.avgList.emit(avgList)
-#             plt.subplot(311)
-#             plt.plot([x for x in range(len(avgList))], avgList)
-#             plt.subplot(312)
-#             plt.plot([x for x in range(len(avgVarList))], avgVarList)
-#             plt.axhline(med, label='median')
-#             plt.subplot(313) 
-#             x = []
-#             y = []
-#             modifyVoice = []
-#             for l in voiceList:
-#                 modifyVoice += l
-#             trig = False
-#             for i in range(self.duration):
-#                 for l in modifyVoice:
-#                     if i > l:
-#                         trig = not trig
-#                 x.append(i)
-#                 if not trig:
-#                     y.append(0)
-#                 else:
-#                     y.append(1)
-#             plt.plot(x, y)
-#             plt.legend()
-#             plt.show()
         self.finish.emit(True)
 
 
@@ -123,11 +147,8 @@ class Separate(QDialog):
     duration = 60000
     processToken = False
     voiceList = Signal(list)
-    avgList = Signal(list)
-    clrSep = Signal()
+    voiceWave = Signal(list, list)
     tablePreset = Signal(list)
-    autoFillToken = True
-    autoSpanToken = True
     multipleThread = True
 
 
@@ -151,17 +172,13 @@ class Separate(QDialog):
         self.afterEdit.setFixedWidth(50)
         layout.addWidget(self.afterEdit, 0, 4, 1, 1)
         layout.addWidget(QLabel(''), 0, 5, 1, 1)
-        self.autoFill = QPushButton('填充字符')
-        self.autoFill.setStyleSheet('background-color:#3daee9')
-        self.autoFill.clicked.connect(self.setAutoFill)
-        layout.addWidget(self.autoFill, 0, 6, 1, 1)
+        layout.addWidget(QLabel('填充字符'), 0, 6, 1, 1)
         self.fillWord = QLineEdit('#AI自动识别#')
         layout.addWidget(self.fillWord, 0, 7, 1, 1)
         layout.addWidget(QLabel(''), 0, 8, 1, 1)
-        self.autoSpan = QPushButton('自动合并')
-        self.autoSpan.setStyleSheet('background-color:#3daee9')
-        self.autoSpan.clicked.connect(self.setAutoSpan)
-        layout.addWidget(self.autoSpan, 0, 9, 1, 1)
+        self.outputIndex = QComboBox()
+        self.outputIndex.addItems(['输出至第%s列' % i for i in range(1, 6)])
+        layout.addWidget(self.outputIndex, 0, 9, 1, 1)
         self.multiCheck = QPushButton('启用多进程')
         self.multiCheck.setStyleSheet('background-color:#3daee9')
         self.multiCheck.clicked.connect(self.setMultipleThread)
@@ -189,20 +206,17 @@ class Separate(QDialog):
                 if not self.afterEdit.text():
                     self.afterEdit.setText('0')
                 after = self.afterEdit.text()
-                if self.autoFillToken:
-                    try:
-                        fillWord = self.fillWord.text()
-                    except:
-                        fillWord = ''
-                else:
-                    fillWord = ''
+                try:
+                    fillWord = self.fillWord.text()
+                except:
+                    fillWord = ' '
+                index = self.outputIndex.currentIndex()
                 self.sepProc = separateQThread(self.videoPath, self.duration, before, after, self.multipleThread)
-                self.clrSep.emit()  # 清空第一条字幕轴
                 self.sepProc.position.connect(self.setTitle)  # 设置标题分析至第几分钟
                 self.sepProc.percent.connect(self.setProgressBar)  # 设置滚动条进度
                 self.sepProc.voiceList.connect(self.sendVoiceList)  # 二次传球给主界面标记表格
-                self.sepProc.avgList.connect(self.sendAvgList)  # 平均音频响度 预留给后面画音频图
-                self.tablePreset.emit([fillWord, self.autoSpanToken]) # 自动填充 填充文本 自动合并
+                self.sepProc.voiceWave.connect(self.sendVoiceWave)  # 二次传球给主界面绘制人声音频图
+                self.tablePreset.emit([fillWord, index]) # 填充文本 输出列
                 self.sepProc.finish.connect(self.sepFinished)
                 self.sepProc.start()
             else:
@@ -210,13 +224,6 @@ class Separate(QDialog):
                 self.processBar.setValue(0)
                 self.checkButton.setText('开始')
                 self.checkButton.setStyleSheet('background-color:#31363b')
-#                 self.sepProc.separate._pool.terminate()
-#                 try:
-#                     p = psutil.Process(self.sepProc.p.pid)
-#                     for proc in p.children(True):
-#                         proc.kill()
-#                 except:
-#                     pass
                 self.sepProc.terminate()
                 self.sepProc.quit()
                 self.sepProc.wait()
@@ -232,8 +239,8 @@ class Separate(QDialog):
     def sendVoiceList(self, voiceList):
         self.voiceList.emit(voiceList)
 
-    def sendAvgList(self, avgList):
-        self.avgList.emit(avgList)
+    def sendVoiceWave(self, x, y):
+        self.voiceWave.emit(x, y)
 
     def sepFinished(self, result):
         if result:
@@ -242,32 +249,9 @@ class Separate(QDialog):
             self.processBar.setValue(100)
             self.checkButton.setText('开始')
             self.checkButton.setStyleSheet('background-color:#31363b')
-#             self.sepProc.separate._pool.terminate()
-#             try:
-#                 p = psutil.Process(self.sepProc.p.pid)
-#                 for proc in p.children(True):
-#                     proc.kill()
-#             except:
-#                 pass
             self.sepProc.terminate()
             self.sepProc.quit()
             self.sepProc.wait()
-
-    def setAutoFill(self):
-        self.autoFillToken = not self.autoFillToken
-        if self.autoFillToken:
-            self.autoFill.setStyleSheet('background-color:#3daee9')
-            self.fillWord.setEnabled(True)
-        else:
-            self.autoFill.setStyleSheet('background-color:#31363b')
-            self.fillWord.setEnabled(False)
-
-    def setAutoSpan(self):
-        self.autoSpanToken = not self.autoSpanToken
-        if self.autoSpanToken:
-            self.autoSpan.setStyleSheet('background-color:#3daee9')
-        else:
-            self.autoSpan.setStyleSheet('background-color:#31363b')
 
     def setMultipleThread(self):
         self.multipleThread = not self.multipleThread
